@@ -2,7 +2,7 @@
 // seat controls, the event log and the export. The game id lives in the URL (?g=PT-7K2M); the whole game state is in
 // the store, so a reload (or a second laptop) resumes the same game.
 
-import { $, h, params, setParam, pageMode, safeSessionGet, safeSessionSet, download, debounce, mmss, toast, uid } from './util.js';
+import { $, h, friendlyError, params, setParam, pageMode, safeSessionGet, safeSessionSet, download, debounce, mmss, toast, uid } from './util.js';
 import { openStore } from './supa.js';
 import { Host, RESULT_STEP_SECONDS } from './host.js';
 import { ROLE_DEFS, ROLE_KEYS, roleFor, activeSeats, planFromRow, attentionUsed } from './roles.js';
@@ -227,4 +227,4 @@ function render() {
   ]));
 }
 
-boot().catch(e => { console.error(e); app.replaceChildren(h('div.admin', h('h1', 'Something went wrong.'), h('p', String(e.message || e)))); });
+boot().catch(e => { console.error(e); app.replaceChildren(h('div.admin', h('h1', 'Something went wrong.'), h('p#fatal', friendlyError(e)))); });

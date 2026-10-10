@@ -2,7 +2,7 @@
 // The page never touches the engine. It reads the team view, results and final snapshots the admin publishes,
 // and writes only its own saved plan (pt_decisions) back.
 
-import { $, h, fmtM, mmss, params, setParam, pageMode, safeGet, safeSet, safeSessionGet, safeSessionSet, toast, debounce } from './util.js';
+import { $, h, friendlyError, fmtM, mmss, params, setParam, pageMode, safeGet, safeSet, safeSessionGet, safeSessionSet, toast, debounce } from './util.js';
 import { installGlossary } from './glossary.js';
 import { openStore, savedSeat, saveSeat, forgetSeat, resumeSeat, lookupCode, takeNewSeat, takeOverSeat, heartbeat } from './supa.js';
 import { roleFor, can, planFromRow, attentionUsed, meter, lockReason, activeSeats } from './roles.js';
@@ -280,4 +280,4 @@ function render() {
 }
 
 window.__pt = { S, write, refresh, render };
-boot().catch(e => { console.error(e); screen(h('h1', 'Something went wrong.'), h('p', String(e.message || e))); });
+boot().catch(e => { console.error(e); screen(h('h1', 'Something went wrong.'), h('p#fatal', friendlyError(e))); });

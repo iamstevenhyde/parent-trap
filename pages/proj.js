@@ -2,7 +2,7 @@
 // news per round, the final snapshot, plus the game row for phase, clock and the reveal queue.
 // Admin shortcuts (page opened with ?k=ADMINKEY): P pauses the clock, Space steps the reveal.
 
-import { $, h, fmtM, fmtBig, fmtSigned, mmss, params, setParam, pageMode, debounce } from './util.js';
+import { $, h, friendlyError, fmtM, fmtBig, fmtSigned, mmss, params, setParam, pageMode, debounce } from './util.js';
 import { installGlossary } from './glossary.js';
 import { openStore } from './supa.js';
 import { PieBoard } from './pies.js';
@@ -386,4 +386,4 @@ function fit() { const z = Math.min(1, window.innerWidth / 1920, window.innerHei
 fit(); window.addEventListener('resize', fit);
 window.__pj = { P, render, chyronStats, fit };
 requestAnimationFrame(chyronFrame);
-boot().catch(e => { console.error(e); app.replaceChildren(h('div.pj-center', h('h1', 'Something went wrong.'), h('p', String(e.message || e)))); });
+boot().catch(e => { console.error(e); app.replaceChildren(h('div.pj-center', h('h1', 'Something went wrong.'), h('p#fatal', friendlyError(e)))); });

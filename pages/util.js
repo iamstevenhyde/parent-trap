@@ -90,3 +90,10 @@ export function download(name, text, type = 'application/json') {
   const a = h('a', { href: URL.createObjectURL(new Blob([text], { type })), download: name });
   document.body.append(a); a.click(); a.remove();
 }
+
+// A plain-words version of a startup error. The common one before class: the Supabase tables have not been created yet.
+export function friendlyError(e) {
+  const m = String((e && e.message) || e);
+  if (/pt_games|schema cache|relation .* does not exist/i.test(m)) return 'The Supabase tables for this game have not been created yet. In Supabase, open project ziszzyvlevgsjiazgogr, SQL editor, paste the whole file pages/schema.sql, press Run, then reload this page. To try the game on one laptop without Supabase, add ?local=1 to the address.';
+  return m;
+}
