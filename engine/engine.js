@@ -36,6 +36,7 @@ function equalizeInheritance(state, teamCount) {
   }
 }
 
+const AI_POLICIES = ['FOCUSED_TWO', 'RELATED_THREE', 'ACQUIRER_HEAVY', 'UNRELATED_FOUR', 'PASSIVE'];
 export function createGame(seed, teamCount = 8, opts = {}) {
   if (!(teamCount >= 1 && teamCount <= MAX_TABLES)) throw new Error('The Parent Trap supports 1 to ' + MAX_TABLES + ' tables (asked for ' + teamCount + ').');
   const cfg = { ...CONFIG, ...(opts.cfg || {}) };
@@ -57,9 +58,14 @@ export function createGame(seed, teamCount = 8, opts = {}) {
   }
   state.unitIds.sort();
   equalizeInheritance(state, teamCount);
+  const aiSet = new Set(opts.aiTeams || []);
+  state.aiPolicy = {};
   for (let k = 1; k <= teamCount; k++) {
-    const id = 'T' + k, team = newTeam(id, false, 'Table ' + k, cfg, k);
-    state.teams[id] = team; state.teamIds.push(id);
+    // opts.aiTeams (default none): seats nobody claimed. They are played by the engine like a bot, using one of the five table
+    // policies, so a class of any size from 1 to 20 fills every seat.
+    const id = 'T' + k, ai = aiSet.has(id), team = newTeam(id, ai, 'Table ' + k, cfg, k);
+    state.teams[id] = team;
+    if (ai) { state.botIds.push(id); state.aiPolicy[id] = AI_POLICIES[(k - 1) % AI_POLICIES.length]; } else state.teamIds.push(id);
     for (const cid of state.inheritance[k - 1].companies) state.units[cid].owners.push({ team: id, w: 1 });
   }
   const bots = BOT_ROSTER.slice(0, state.opts.botCount);

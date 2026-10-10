@@ -34,7 +34,7 @@ export class Host {
   // Run one thing at a time, so realtime callbacks and button clicks never overlap.
   run(fn) { const p = this.queue.then(fn); this.queue = p.catch(e => console.error(e)); return p; }
 
-  async createNew({ seed, teams, bots, liveAuction = true, requireWhy = true }) {
+  async createNew({ seed, teams = 20, bots = 0, liveAuction = true, requireWhy = true }) {
     const row = newGameRow({ seed, teams, bots }, { liveAuction, requireWhy });
     const used = new Set();
     await this.store.createGame(row);
@@ -61,7 +61,7 @@ export class Host {
 
   async rebuild() {
     const g = this.game;
-    this.state = createGame(g.seed, g.team_count, { botCount: g.bot_count, liveAuction: this.live });
+    this.state = createGame(g.seed, g.team_count, { botCount: g.bot_count, liveAuction: this.live, aiTeams: (g.settings || {}).aiTeams || [] });
     await this.applyNames();
     const decs = await this.store.getDecisions(this.gid);
     const mks = this.live ? Object.fromEntries((await this.store.getSnapshots(this.gid, { kind: 'market' })).map(x => [x.round, x.data])) : {};
@@ -206,6 +206,11 @@ export class Host {
   startGame() {
     return this.run(async () => {
       if (this.game.phase !== 'lobby') return;
+      // Every seat nobody has claimed is played by AI from now on. The list is saved in the game settings so a reload rebuilds the same game.
+      const seats = (await this.store.getSeats(this.gid)).filter(s => !s.removed), teams = await this.store.getTeams(this.gid);
+      const ai = teams.map(t => t.team_id).filter(id => !seats.some(s => s.team_id === id));
+      this.game = await this.store.patchGame(this.gid, { settings: { ...(this.game.settings || {}), aiTeams: ai } });
+      await this.rebuild();
       await this.applyNames();
       await this.store.putSnapshot(this.gid, 0, 'public', '', buildPublic(this.state, 0));
       openRound(this.state, 1);

@@ -35,24 +35,33 @@ function joinScreen(note) {
   const out = h('div#joinout');
   const go = async () => {
     out.replaceChildren();
-    const r = await lookupCode(S.store, code.value, hint);
-    if (r.error) { out.append(h('p.warnline', r.error)); return; }
-    S.gid = r.game.id;
-    const seats = (await S.store.getSeats(r.game.id)).filter(x => x.team_id === r.team.team_id && !x.removed);
-    const list = h('div.seatlist', [h('p', [h('b', 'Team ' + r.team.name + '.'), ' Which one is you?'])]);
-    for (const st of seats) {
-      const live = Date.now() - new Date(st.last_seen || 0).getTime() < 60000;
-      list.append(h('button.seatbtn', { type: 'button', onclick: async () => {
-        if (live && !confirm(st.name + ' looks connected on another laptop. Take over?')) return;
-        const res = await takeOverSeat(S.store, r.game, st); begin(res.info);
-      } }, st.name));
-    }
-    list.append(h('button.seatbtn.new', { type: 'button', onclick: async () => {
-      const res = await takeNewSeat(S.store, r.game, r.team, name.value);
-      if (res.error) { out.append(h('p.warnline', res.error)); return; }
-      begin(res.info);
-    } }, 'New seat' + (name.value ? ' as ' + name.value : '')));
-    out.append(list);
+    try {
+      const r = await lookupCode(S.store, code.value, hint);
+      if (r.error) { out.append(h('p.warnline', r.error)); return; }
+      S.gid = r.game.id;
+      const seats = (await S.store.getSeats(r.game.id)).filter(x => x.team_id === r.team.team_id && !x.removed);
+      const claim = async () => {
+        try {
+          const res = await takeNewSeat(S.store, r.game, r.team, name.value);
+          if (res.error) { out.append(h('p.warnline', res.error)); return; }
+          begin(res.info);
+        } catch (e) { out.append(h('p.warnline', friendlyError(e))); }
+      };
+      // First student on a team: take the seat straight away. Otherwise ask whether this is a seat that already exists (a second device) or a new one.
+      if (!seats.length) { await claim(); return; }
+      const list = h('div.seatlist', [h('p', [h('b', 'Team ' + r.team.name + '.'), ' Which one is you?'])]);
+      for (const st of seats) {
+        const live = Date.now() - new Date(st.last_seen || 0).getTime() < 60000;
+        list.append(h('button.seatbtn', { type: 'button', onclick: async () => {
+          try {
+            if (live && !confirm(st.name + ' looks connected on another laptop. Take over?')) return;
+            const res = await takeOverSeat(S.store, r.game, st); begin(res.info);
+          } catch (e) { out.append(h('p.warnline', friendlyError(e))); }
+        } }, st.name));
+      }
+      list.append(h('button.seatbtn.new', { type: 'button', onclick: claim }, 'New seat' + (name.value ? ' as ' + name.value : '')));
+      out.append(list);
+    } catch (e) { out.append(h('p.warnline', friendlyError(e))); }
   };
   screen(h('h1', 'The Parent Trap'), note ? h('p.banner', note) : null, h('p', 'Enter your team code.'), h('div.row', [code, name, h('button.go#joinbtn', { type: 'button', onclick: go }, 'Join')]), out);
 }

@@ -79,13 +79,13 @@ function tick() {
 
 // ---------- pieces ----------
 function createPanel() {
-  const seed = h('input#seed', { type: 'number', placeholder: 'blank = random' }), teams = h('input#nteams', { type: 'number', min: 2, max: 20, value: 16 }), bots = h('input#nbots', { type: 'number', min: 0, max: 4, value: 3 }), live = h('input#livecb', { type: 'checkbox', checked: true }), why = h('input#whycb', { type: 'checkbox', checked: true });
+  const seed = h('input#seed', { type: 'number', placeholder: 'blank = random' }), teams = { value: 20 }, bots = { value: 0 }, live = h('input#livecb', { type: 'checkbox', checked: true }), why = h('input#whycb', { type: 'checkbox', checked: true });
   return h('section.panel', [h('h2', 'New game'),
-    h('div.row', [h('label', ['Seed ', seed]), h('label', ['Number of human teams ', teams]), h('label', ['Number of bot conglomerates ', bots]), h('label', [live, ' Live auction (off = sealed bids)']), h('label', [why, ' Require the why sentence']),
+    h('div.row', [h('label', ['Seed ', seed]), h('span.sub', 'Always 20 seats. Seats nobody claims by Start are played by AI.'), h('label', [live, ' Live auction (off = sealed bids)']), h('label', [why, ' Require the why sentence']),
       h('button.go#create', { type: 'button', onclick: async () => {
         try {
           const host = new Host(A.store, null);
-          const g = await host.createNew({ seed: seed.value ? Number(seed.value) : null, teams: Math.max(2, Math.min(20, Number(teams.value) || 16)), bots: Math.max(0, Math.min(4, Number(bots.value) || 3)), liveAuction: live.checked, requireWhy: why.checked });
+          const g = await host.createNew({ seed: seed.value ? Number(seed.value) : null, teams: 20, bots: 0, liveAuction: live.checked, requireWhy: why.checked });
           safeSessionSet('pt_admin_' + g.id, g.admin_key); setParam('g', g.id); A.gid = g.id; A.host = host; A.msg = 'Game ' + g.id + ' created. Seed ' + g.seed + '.';
           A.store.subscribe(A.gid, debounce(refresh, 80));
           await refresh();
@@ -130,7 +130,7 @@ function det(key, title, child, defOpen = false, cls = '') {
 function recommended(g, seated, locked) {
   const host = A.host, r = g.round;
   switch (g.phase) {
-    case 'lobby': return seated.length < 2 ? 'Waiting for at least 2 teams to seat (' + seated.length + ' now).' : seated.length + ' teams are seated. Press Start when everyone is in.';
+    case 'lobby': return seated.length < 1 ? 'Waiting for the first student to join.' : seated.length + ' of 20 seats are claimed. Press Start when everyone is in; the other ' + (20 - seated.length) + ' seats will be played by AI.';
     case 'news': return 'Teams are reading the news. ' + (host.hasMarket() ? 'Advance opens the live market.' : 'Advance opens decisions.');
     case 'market': return 'The live market is open. Advance closes it and the winners pay their prices.';
     case 'decide': return locked.length + ' of ' + seated.length + ' teams have locked. ' + (locked.length >= seated.length && seated.length ? 'Everyone is in; the round works out by itself.' : 'Advance works out the round with the saved plans.');
@@ -143,7 +143,7 @@ function recommended(g, seated, locked) {
 function controlsPanel() {
   const host = A.host, g = host.game, set = g.settings || {};
   const seated = seatedTeamIds(), locked = lockedIds();
-  const waiting = g.phase === 'lobby' && seated.length < 2;
+  const waiting = g.phase === 'lobby' && seated.length < 1;
   const reveal = g.reveal || { idx: -1 };
   const revLabel = g.phase === 'results' && reveal.idx + 1 < pubLen() ? revealLabel(reveal.idx + 1) : '';
   const label = host.nextLabel(revLabel);

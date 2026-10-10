@@ -287,3 +287,6 @@ button.big { font-size: 22px; padding: 14px 32px; } button.danger { border-color
 .mk-grid.tiny.xl { grid-template-columns: repeat(7, 1fr); gap: 6px; } .mk-grid.tiny.xl .mk-name { font-size: 16px; } .mk-grid.tiny.xl .mk-price b { font-size: 30px; }
 
 .pj-board.dense3 .lbrow { font-size: 17px; padding: 0; line-height: 1.15; } .pj-board.dense3 h3 { font-size: 20px; margin: 0; } .pj-board.dense3 .lbrow .dl { font-size: 15px; } .pj-board.dense3 .rk { font-size: 16px; }
+
+.pj-lobby .codes { gap: 8px; margin-top: 10px; } .pj-lobby .codecard { min-width: 0; width: 330px; padding: 4px 10px; gap: 0; } .pj-lobby .codecard b { font-size: 22px; } .pj-lobby .codecard .code { font-size: 40px; line-height: 1.1; } .pj-lobby .codecard span:last-child { font-size: 16px; }
+.pj-lobby h1 { font-size: 56px; margin: 0; } .pj-lobby p.big { font-size: 26px; margin: 4px 0; }

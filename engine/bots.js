@@ -169,7 +169,9 @@ const BOTS = {
 };
 export function botDecide(state, id) {
   const fn = BOTS[id];
-  return fn ? fn(state, id) : newDec('idle');
+  if (fn) return fn(state, id);
+  const pol = state.aiPolicy && state.aiPolicy[id];     // an unclaimed seat: played with one of the table policies
+  return pol ? ARCHETYPES[pol](state, id) : newDec('idle');
 }
 
 // ---------------- archetypes (student-slot tables for the gates) ----------------

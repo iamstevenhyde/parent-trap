@@ -140,6 +140,7 @@ export async function lookupCode(store, code, gameHint) {
   if (!team) return { error: 'That code does not match a team. Check with your instructor.' };
   const game = await store.getGame(team.game_id);
   if (!game) return { error: 'We could not find that game. Enter a join code.' };
+  if (game.phase !== 'lobby' && ((game.settings || {}).aiTeams || []).includes(team.team_id)) return { error: 'The game has already started, and nobody had claimed that team, so AI is playing it. Ask your instructor.' };
   return { team, game };
 }
 

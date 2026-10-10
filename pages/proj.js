@@ -176,7 +176,7 @@ function lobbyBody() {
   return h('div.pj-lobby', [
     h('h1', 'Waiting for teams.'),
     h('p.big', ['Join at ', h('b', base), ' with your team code.']),
-    h('p.big', joined + ' of ' + P.teams.length + ' teams joined'),
+    h('p.big', joined + ' of ' + P.teams.length + ' seats claimed. Seats nobody claims are played by AI.'),
     h('div.codes', P.teams.map(t => h('div.codecard', [h('b', t.name), h('span.code', t.join_code), h('span', P.seats.filter(x => x.team_id === t.team_id && !x.removed).length + ' seated')]))),
   ]);
 }

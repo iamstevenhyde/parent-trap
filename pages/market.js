@@ -68,7 +68,7 @@ export function placeBid(m, state, tid, lotKey, amount, rest = 0, now = Date.now
     }
     if (amount > lot.catalog * MAX_MULT) return { ok: false, reason: 'That is more than three times the listed value. Check the number.' };
   }
-  if (!isBot) {
+  {   // the AI seats are held to the same cash rule, otherwise they would lead at a price the engine cannot charge them
     const fee = 1 + feeRate(state, tid), have = committedBy(m, state, tid, lotKey), budget = budgetOf(state, tid);
     // The team must also be able to pay the end-of-round obligations (complexity cost of the portfolio it would then hold, interest on
     // its credit line) from what is left, or the game would force it to sell a business, possibly the one it is bidding for.
