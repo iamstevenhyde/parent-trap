@@ -70,7 +70,7 @@ function phaseLabel() {
   switch (g.phase) {
     case 'lobby': return 'WAITING';
     case 'news': return 'READ THE NEWS';
-    case 'market': return 'LIVE MARKET';
+    case 'market': return 'ROUND OPEN';
     case 'decide': return seated && lockedN >= seated ? 'LOCKED IN' : 'DECIDE';
     case 'resolving': return 'WORKING IT OUT';
     case 'results': return 'RESULTS';
@@ -94,7 +94,7 @@ function tick() {
   const bk = $('#breaking'); if (bk) { bk.style.display = P.breaking ? 'block' : 'none'; bk.textContent = P.breaking || ''; }
   if (!P.breaking && P.breakQ.length) { P.breaking = P.breakQ.shift(); clearTimeout(P.breakTimer); P.breakTimer = setTimeout(() => { P.breaking = null; }, 10000); }
 }
-const lockText = () => P.game.phase === 'decide' ? P.decisions.filter(d => d.locked).length + ' of ' + (seatedTeams() || P.teams.length) + ' teams locked' : '';
+const lockText = () => (P.game.phase === 'decide' || P.game.phase === 'market') ? P.decisions.filter(d => d.locked).length + ' of ' + (seatedTeams() || P.teams.length) + ' teams locked' : '';
 
 function queueBreaking(text) { if (!P.seenBreak.has(text)) { P.seenBreak.add(text); P.breakQ.push(text); } }
 // Moving to a new reveal step drops banners that belong to the previous step, so a banner never describes a lot that is gone.
@@ -186,12 +186,37 @@ function leaderboardEl(pub, showDelta = true) {
     h('span.rk', r.rank), h('span.nm', r.name, r.isBot ? h('em.ai', 'AI') : null), h('span.vl', fmtBig(r.ev)), showDelta ? h('span.dl.' + (r.delta >= 0 ? 'up' : 'down'), r.delta ? fmtSigned(r.delta) : '') : null]))]);
 }
 
+// Steven's asks 1, 2, 10 and 12: while a round is open the news sits under the pies, and the live auction takes the leaderboard's slot.
+function newsPanel() {
+  const items = P.news[P.game.round] || [];
+  if (!items.length || !['market', 'decide'].includes(P.game.phase)) return null;
+  return h('section.pj-newspanel', [h('div.np-grid' + (items.length > 4 ? '.many' : ''), items.map(n => h('div.nitem', [h('span.chip.' + (n.tag || '').toLowerCase(), n.tag), ' ' + n.text])))]);
+}
+// With a long list the sister companies ("... North", "... East") would all look the same once cut short, so keep the suffix and trim the front.
+function shortLot(name) { const m = / (North|South|East|West)$/.exec(name), base = m ? name.slice(0, m.index) : name, lim = m ? 12 : 17, cut = base.length > lim + 1 ? base.slice(0, lim - 1).trim() + '…' : base; return cut + (m ? m[0] : ''); }
+function auctionPanel() {
+  const m = P.market;
+  if (!m) return h('aside.pj-board', [h('h3', 'Live auction'), h('p', 'Opening...')]);
+  const prev = P.prevPrices || {}, next = {}, n = m.lots.length;
+  const rows = m.lots.map(l => {
+    next[l.key] = l.price;
+    const bumped = prev[l.key] !== undefined && prev[l.key] !== l.price;
+    return h('div.aurow' + (bumped ? '.bump' : '') + (l.high ? '.held' : ''), { dataset: { lot: l.key, price: l.price === null ? '' : l.price } }, [
+      icon(l.ind, 26), h('span.an', n > 12 ? shortLot(l.name) : l.name), h('b.ap', l.price === null ? fmtM(l.opening) : fmtM(l.price)),
+      h('span.al', l.high ? [l.high.name, l.high.bot ? h('em.ai', 'AI') : null] : (l.fixed ? 'listed by ' + l.sellerName : 'no bids')),
+    ]);
+  });
+  P.prevPrices = next;
+  const led = m.lots.filter(l => l.high).length;
+  return h('aside.pj-board.pj-auction-slot' + (n > 12 ? '.dense3' : n > 5 ? '.dense2' : ''), [h('h3', 'Live auction'), h('p.sub', led + ' of ' + n + ' have a leader. Highest price when the round closes takes the company.'), h('div.aulist', rows)]);
+}
 function worldBody() {
   const pub = pubOf(shownRound());
   if (!pub) return lobbyBody();
   const svg = h('div.pj-pies', SVGEL);
   const legend = h('div.pj-legend', IND_ORDER.map(k => h('span', [icon(k, 34), ' ' + IND[k].label])));
-  const wrap = h('div.pj-world', [h('div.pj-left', [svg, legend]), leaderboardEl(pub)]);
+  const right = P.game.phase === 'market' ? auctionPanel() : leaderboardEl(pub);
+  const wrap = h('div.pj-world', [h('div.pj-left', [svg, newsPanel(), legend]), right]);
   queueMicrotask(() => drawPies(pub, shownRound(), P.game.phase === 'results'));
   return wrap;
 }
@@ -290,6 +315,24 @@ function summaryReveal(pub) {
   return h('div.pj-summary', [h('h2', 'Economic summary'), h('p.huge', 'Total market value ' + fmtBig(pub.totalValue) + ', ' + (d >= 0 ? '+' : '') + d.toFixed(1) + '% this round.'), leaderboardEl(pub)]);
 }
 
+// ---- one report per round (Steven's ask 11): the auctions, the six industries and the standings on a single screen ----
+function reportBody(pub) {
+  const pr = P.publics[pub.round - 1], prevTot = pr ? pr.totalValue : pub.startTotal, d = (pub.totalValue / prevTot - 1) * 100;
+  const auc = pub.auctions.map(a => {
+    const diff = a.price !== null ? a.price - a.trueValue : 0;
+    return h('div.rp-arow', [icon(a.ind, 24), h('span.an', a.name),
+      a.price !== null ? [h('span.aw', a.winners.join(' and ')), h('b.ap', fmtM(a.price)), h('span.av' + (diff > 0 ? '.curse' : '.good'), 'real ' + fmtM(a.trueValue))] : [h('span.aw', a.bids.length ? 'could not close' : 'no bids'), h('b.ap', ''), h('span.av', '')]]);
+  });
+  const inds = pub.industries.map(c => h('div.rp-ind', [h('div.rp-ih', [icon(c.ind, 34), h('b', c.label)]), h('p.rp-head', c.headline),
+    h('div.rp-nums', [['demand', 'Demand'], ['price', 'Price'], ['input', 'Costs'], ['profit', 'Profit']].map(([k, l]) => { const v = c.nums[k], cls = v > 0.005 ? 'up' : v < -0.005 ? 'down' : 'flat'; return h('span.' + cls, l + ' ' + (Math.abs(v) < 0.005 ? '0' : (v > 0 ? '+' : '-') + Math.abs(Math.round(v * 100)) + '%')); })),
+    c.why.length ? h('p.rp-why', c.why[0]) : null]));
+  return h('div.pj-report', [
+    h('section.rp-auc', [h('h3', 'Market results'), auc.length ? h('div.rp-alist' + (auc.length > 14 ? '.dense' : ''), auc) : h('p', 'Nothing sold this round.')]),
+    h('section.rp-ind', [h('h3', 'What moved'), h('div.rp-igrid', inds)]),
+    h('div.rp-board', [h('p.rp-total', ['Total market value ', h('b', fmtBig(pub.totalValue)), ' (' + (d >= 0 ? '+' : '') + d.toFixed(1) + '% this round)']), leaderboardEl(pub)]),
+  ]);
+}
+
 function revealBody() {
   const rv = P.game.reveal, pub = P.publics[P.game.round];
   const A = pub.auctions.length, idx = rv.idx;
@@ -350,11 +393,11 @@ function render() {
   let body;
   if (g.phase === 'lobby') body = lobbyBody();
   else if (g.phase === 'final') body = P.view === 'replay' && P.replay ? replayBody() : standingsBody();
-  else if (g.phase === 'results' && g.reveal && g.reveal.idx >= 0 && P.publics[g.round]) body = revealBody();
+  else if (g.phase === 'results' && P.publics[g.round]) body = reportBody(P.publics[g.round]);
   else if (g.phase === 'news') body = newsBody();
-  else if (g.phase === 'market') body = marketBody();
-  else body = worldBody();
-  if (g.phase === 'results' && !(g.reveal && g.reveal.idx >= 0) && P.publics[g.round]) for (const b of P.publics[g.round].breaking) queueBreaking('BREAKING: ' + b.text.replace(/^BREAKING:\s*/, ''));
+  else body = worldBody();   // the live market is the right-hand panel of the world screen now
+
+  if (g.phase === 'results' && P.publics[g.round]) for (const b of P.publics[g.round].breaking) queueBreaking('BREAKING: ' + b.text.replace(/^BREAKING:\s*/, ''));
   const f = frame(body), ov = g.phase === 'final' ? autopsyOverlay() : null;
   if (ov) f.append(ov);
   app.replaceChildren(f);

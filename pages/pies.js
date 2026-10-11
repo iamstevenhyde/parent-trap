@@ -26,6 +26,8 @@ export class PieBoard {
   // teams: [{id,name,isBot,ev,delta,units,cash,loan,building}], ref: the EV that fills the biggest radius
   set(teams, { animate = true, ref, showDelta = true } = {}) {
     cancelAnimationFrame(this.raf);
+    // Steven's ask 12: pies run in leaderboard order, biggest firm top-left, smallest bottom-right (the grid fills row by row)
+    teams = [...teams].sort((a, b) => b.ev - a.ev || (a.id < b.id ? -1 : 1));
     this.order = teams.map(t => t.id);
     const maxEv = Math.max(...teams.map(t => t.ev), 1);
     this.ref = ref || maxEv;

@@ -265,10 +265,15 @@ em.ai { font-style: normal; font-size: .6em; background: #342b51; color: #bdaae7
 .boothstate #phasebig { font-size: 30px; letter-spacing: .06em; color: var(--amber); }
 button.big { font-size: 22px; padding: 14px 32px; } button.danger { border-color: var(--red); color: var(--red); background: transparent; }
 .setting { margin-right: 18px; } .more summary { cursor: pointer; margin: 10px 0 6px; color: var(--sub); }
-.teamapp .zones[data-phase="market"] .zone-biz, .teamapp .zones[data-phase="market"] .zone-act { opacity: .55; }
-
-.teamapp .zones[data-phase="market"] { grid-template-columns: 0.8fr 0.8fr 1.8fr; }
-.teamapp .zones[data-phase="market"] .zone-mkt { order: -1; }
+/* 2026-10-10 asks 3 and 10: My businesses is always the left column and everything is open at once, so the market no longer jumps first or dims the other columns */
+.teamapp .zones { grid-template-columns: 1.15fr 1fr 1.5fr; }
+.teamapp .zones.nomkt { grid-template-columns: 1.2fr 1fr; }
+.bizinfo { margin: 6px 0 4px; font-size: 13px; }
+.bizinfo .hook { margin: 2px 0; color: var(--text); }
+.bizinfo .newshead { margin: 6px 0 2px; color: var(--amber); font-weight: 600; }
+.bizinfo .bznews { margin: 0 0 4px; padding-left: 16px; } .bizinfo .bznews li { margin-bottom: 3px; }
+.bizinfo .hit { color: var(--amber); } .bizinfo .cando { margin: 2px 0; }
+.arow .notnow { color: var(--amber); grid-column: 1; margin: 0; } .arow .here { color: var(--green); grid-column: 1; margin: 0; }
 .mk-grid.dense .mk-card { padding: 8px 12px; } .mk-grid.dense .mk-price b { font-size: 44px; } .mk-grid.dense .mk-list { display: none; } .mk-grid.dense .mk-hist { min-height: 0; }
 .mk-grid.dense .mk-hist li:nth-child(n+3) { display: none; } .mk-grid.dense .mk-name { font-size: 23px; }
 .pj-market .mk-top h2 { font-size: 34px; margin: 0; }
@@ -290,3 +295,43 @@ button.big { font-size: 22px; padding: 14px 32px; } button.danger { border-color
 
 .pj-lobby .codes { gap: 8px; margin-top: 10px; } .pj-lobby .codecard { min-width: 0; width: 330px; padding: 4px 10px; gap: 0; } .pj-lobby .codecard b { font-size: 22px; } .pj-lobby .codecard .code { font-size: 40px; line-height: 1.1; } .pj-lobby .codecard span:last-child { font-size: 16px; }
 .pj-lobby h1 { font-size: 56px; margin: 0; } .pj-lobby p.big { font-size: 26px; margin: 4px 0; }
+
+@media (max-width: 900px) { .teamapp .zones, .teamapp .zones.nomkt { grid-template-columns: 1fr; } }
+
+/* ---------- projector, 2026-10-10: news under the pies, live auction in the leaderboard slot, one report per round ---------- */
+.pj-newspanel { background: var(--panel); border-radius: 12px; padding: 8px 16px; margin-top: 6px; }
+.pj-newspanel h3 { margin: 0 0 4px; font-size: 26px; color: var(--amber); }
+.np-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 28px; } .np-grid .nitem { font-size: 22px; line-height: 1.2; padding: 3px 0; } .np-grid.many .nitem { font-size: 19px; }
+.pj-auction-slot h3 { margin: 0; } .pj-auction-slot > p.sub { font-size: 17px; color: var(--sub); margin: 2px 0 6px; }
+.aulist { display: grid; gap: 4px; }
+.aurow { display: grid; grid-template-columns: 28px 1fr auto; grid-template-areas: "i n p" "i l l"; column-gap: 8px; align-items: center; background: var(--panel2); border: 2px solid var(--line); border-radius: 8px; padding: 4px 10px; }
+.aurow svg { grid-area: i; } .aurow .an { grid-area: n; font-size: 22px; font-weight: 700; } .aurow .ap { grid-area: p; font-size: 28px; color: var(--amber); } .aurow .al { grid-area: l; font-size: 18px; color: var(--sub); }
+.aurow.held { border-color: var(--amber); } .aurow.held .al { color: var(--green); } .aurow.bump { animation: bump .8s ease-out; }
+.pj-auction-slot.dense2 .an, .pj-auction-slot.dense3 .an { font-size: 17px; } .pj-auction-slot.dense2 .ap, .pj-auction-slot.dense3 .ap { font-size: 21px; } .pj-auction-slot.dense2 .al, .pj-auction-slot.dense3 .al { font-size: 14px; }
+.pj-auction-slot.dense2 .aurow, .pj-auction-slot.dense3 .aurow { padding: 1px 8px; border-width: 1px; } .pj-auction-slot.dense3 .aulist { grid-template-columns: 1fr 1fr; }
+.pj-auction-slot.dense3 .an { font-size: 15px; } .pj-auction-slot.dense3 .ap { font-size: 18px; }
+.pj-report { display: grid; grid-template-columns: 0.9fr 1.35fr 460px; gap: 20px; height: 100%; min-height: 0; }
+.pj-report h3 { margin: 0 0 6px; font-size: 30px; color: var(--amber); }
+.pj-report section, .pj-report .rp-board { min-height: 0; overflow: hidden; }
+.rp-alist { display: grid; gap: 3px; } .rp-arow { display: grid; grid-template-columns: 26px 1fr auto auto auto; gap: 8px; align-items: center; font-size: 20px; background: var(--panel); border-radius: 6px; padding: 3px 8px; }
+.rp-alist.dense .rp-arow { font-size: 15px; padding: 1px 6px; } .rp-arow .ap { color: var(--amber); } .rp-arow .av { color: var(--sub); } .rp-arow .av.curse { color: var(--red); } .rp-arow .av.good { color: var(--green); }
+.rp-igrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.rp-ind { background: var(--panel); border-radius: 10px; padding: 8px 12px; } .rp-ih { display: flex; align-items: center; gap: 10px; font-size: 26px; }
+.rp-head { margin: 4px 0; font-size: 20px; line-height: 1.2; } .rp-nums { display: flex; gap: 12px; flex-wrap: wrap; font-size: 18px; } .rp-nums .up { color: var(--green); } .rp-nums .down { color: var(--red); } .rp-nums .flat { color: var(--sub); }
+.rp-why { margin: 4px 0 0; font-size: 16px; color: var(--sub); }
+.rp-total { font-size: 24px; margin: 0 0 6px; } .rp-total b { color: var(--amber); }
+.rp-board .pj-board { max-height: 100%; }
+.pj-world { min-height: 0; } .pj-left { min-height: 0; height: 100%; } .pj-left .pj-pies { flex: 1 1 0; min-height: 0; overflow: hidden; }
+.pj-left .pj-legend { flex: none; }
+.pj-newspanel { padding: 4px 14px; } .np-grid .nitem { font-size: 20px; padding: 2px 0; } .np-grid.many .nitem { font-size: 18px; } .np-grid .nitem .chip { font-size: 15px; }
+.pj-left .pj-legend { font-size: 22px; } .pj-left .pj-legend svg { width: 26px; height: 26px; }
+.pj-auction-slot.dense2 .aurow { padding: 2px 10px; } .pj-auction-slot.dense2 .an { font-size: 20px; } .pj-auction-slot.dense2 .ap { font-size: 24px; } .pj-auction-slot.dense2 .al { font-size: 16px; }
+.pj-auction-slot.dense3 .aulist { grid-template-columns: 1fr 1fr; gap: 3px 6px; }
+.pj-auction-slot.dense3 .aurow { grid-template-columns: 22px 1fr auto auto; grid-template-areas: "i n p l"; column-gap: 6px; padding: 1px 6px; }
+.pj-auction-slot.dense3 .aurow svg { width: 22px; height: 22px; } .pj-auction-slot.dense3 .an { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .pj-auction-slot.dense3 .ap { font-size: 17px; }
+.pj-auction-slot.dense3 .al { font-size: 13px; max-width: 92px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .pj-auction-slot.dense3 > p.sub { display: none; }
+.pj-auction-slot.dense3 .aurow { grid-template-columns: 22px 1fr auto; grid-template-areas: "i n p" "i l l"; padding: 2px 8px; }
+.pj-auction-slot.dense3 .an { font-size: 17px; line-height: 1.15; } .pj-auction-slot.dense3 .ap { font-size: 20px; }
+.pj-auction-slot.dense3 .al { font-size: 15px; max-width: none; line-height: 1.1; }
+.pj-auction-slot.dense3 .aurow { padding: 0 8px; } .pj-auction-slot.dense3 .aulist { gap: 2px 6px; } .pj-auction-slot.dense3 .an { overflow: visible; text-overflow: clip; }
+.pj-auction-slot.dense3 .aulist { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .pj-auction-slot.dense3 .an { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 16px; } .pj-auction-slot.dense3 .aurow { min-width: 0; }

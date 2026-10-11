@@ -5,7 +5,7 @@
 import { $, h, friendlyError, params, setParam, pageMode, safeSessionGet, safeSessionSet, download, debounce, mmss, toast, uid } from './util.js';
 import { openStore } from './supa.js';
 import { Host, RESULT_STEP_SECONDS } from './host.js';
-import { ROLE_DEFS, ROLE_KEYS, roleFor, activeSeats, planFromRow, attentionUsed } from './roles.js';
+import { ROLE_DEFS, ROLE_KEYS, ROLES_ON, roleFor, activeSeats, planFromRow, attentionUsed } from './roles.js';
 import { exportLog } from './views.js';
 
 const app = document.getElementById('app');
@@ -60,7 +60,8 @@ function lockedIds() { return A.decisions.filter(d => d.locked).map(d => d.team_
 function clockLeft() { const c = A.host && A.host.game && A.host.game.clock; if (!c) return 0; return c.paused ? c.remaining : Math.max(0, (c.endsAt || 0) - Date.now()); }
 
 let autoTimer = null, lastBot = 0, lastResultStep = 0;
-function pubLen() { return A.pub ? A.pub.auctions.length + 7 : 0; }
+// The results are one report now (Steven's ask 11), so there is no reveal queue to step through: pubLen is 0 and Advance goes straight on.
+function pubLen() { return 0; }
 function tick() {
   const host = A.host; if (!host || !host.game) return;
   const g = host.game, c = $('#clock'); if (c) c.textContent = g.clock ? (g.clock.paused ? 'PAUSED ' : '') + mmss(clockLeft()) : '--:--';
@@ -69,19 +70,19 @@ function tick() {
   // Advance on timers is opt-in. With it off the clock only counts; the instructor presses Advance.
   if (auto && g.clock && !g.clock.paused && g.clock.endsAt && Date.now() > g.clock.endsAt + 300 && ['news', 'market', 'decide'].includes(g.phase)) { host.advance(pubLen()).then(refresh); return; }
   if (auto && g.phase === 'results' && Date.now() - lastResultStep > RESULT_STEP_SECONDS * 1000) { lastResultStep = Date.now(); host.advance(pubLen()).then(refresh); }
-  if ((set.autoResolve !== false) && g.phase === 'decide') {
+  if ((set.autoResolve !== false) && (g.phase === 'decide' || g.phase === 'market')) {
     const seated = seatedTeamIds(), locked = lockedIds();
     if (seated.length && seated.every(t => locked.includes(t))) {
-      if (!autoTimer) autoTimer = setTimeout(() => { autoTimer = null; if (host.game.phase === 'decide') host.resolveNow(); }, 2500);
+      if (!autoTimer) autoTimer = setTimeout(() => { autoTimer = null; if (host.game.phase === 'decide' || host.game.phase === 'market') host.advance(pubLen()).then(refresh); }, 2500);
     } else if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
   }
 }
 
 // ---------- pieces ----------
 function createPanel() {
-  const seed = h('input#seed', { type: 'number', placeholder: 'blank = random' }), teams = { value: 20 }, bots = { value: 0 }, live = h('input#livecb', { type: 'checkbox', checked: true }), why = h('input#whycb', { type: 'checkbox', checked: true });
+  const seed = h('input#seed', { type: 'number', placeholder: 'blank = random' }), teams = { value: 20 }, bots = { value: 0 }, live = h('input#livecb', { type: 'checkbox', checked: true }), why = h('input#whycb', { type: 'checkbox', checked: false });
   return h('section.panel', [h('h2', 'New game'),
-    h('div.row', [h('label', ['Seed ', seed]), h('span.sub', 'Always 20 seats. Seats nobody claims by Start are played by AI.'), h('label', [live, ' Live auction (off = sealed bids)']), h('label', [why, ' Require the why sentence']),
+    h('div.row', [h('label', ['Seed ', seed]), h('span.sub', 'Always 20 seats. Seats nobody claims by Start are played by AI.'), h('label', [live, ' Live auction (off = sealed bids)']), h('label', [why, ' Ask for a why sentence (off by default)']),
       h('button.go#create', { type: 'button', onclick: async () => {
         try {
           const host = new Host(A.store, null);
@@ -110,7 +111,7 @@ function codesPanel() {
       ...seats.map(st => {
         const r = roleFor(A.seats, st, g.round), ago = st.last_seen ? Math.round((Date.now() - new Date(st.last_seen).getTime()) / 1000) : null;
         return h('div.seatrow', [st.name, h('span.sub', ' ' + r.label + (ago !== null ? ', seen ' + (ago < 90 ? ago + 's' : Math.round(ago / 60) + 'm') + ' ago' : '')),
-          h('select', { title: 'Reassign role', onchange: async e => { await A.store.upsertSeat({ id: st.id, game_id: A.gid, team_id: st.team_id, slot: st.slot, role_override: e.target.value || null }); } },
+          !ROLES_ON ? null : h('select', { title: 'Reassign role', onchange: async e => { await A.store.upsertSeat({ id: st.id, game_id: A.gid, team_id: st.team_id, slot: st.slot, role_override: e.target.value || null }); } },
             [h('option', { value: '' }, 'Auto role'), ...ROLE_KEYS.map(k => h('option', { value: k, selected: st.role_override === k }, ROLE_DEFS[k].label))]),
           h('button', { type: 'button', onclick: async () => { await A.store.upsertSeat({ id: st.id, game_id: A.gid, team_id: st.team_id, slot: st.slot, removed: true }); } }, 'Remove seat')]);
       }),
@@ -131,8 +132,8 @@ function recommended(g, seated, locked) {
   const host = A.host, r = g.round;
   switch (g.phase) {
     case 'lobby': return seated.length < 1 ? 'Waiting for the first student to join.' : seated.length + ' of 20 seats are claimed. Press Start when everyone is in; the other ' + (20 - seated.length) + ' seats will be played by AI.';
-    case 'news': return 'Teams are reading the news. ' + (host.hasMarket() ? 'Advance opens the live market.' : 'Advance opens decisions.');
-    case 'market': return 'The live market is open. Advance closes it and the winners pay their prices.';
+    case 'news': return 'Old-style news phase (a game started before the change). ' + (host.hasMarket() ? 'Advance opens the live market.' : 'Advance opens decisions.');
+    case 'market': return locked.length + ' of ' + seated.length + ' teams have locked. The market, businesses and actions are all open. Advance closes the market and works out the round.';
     case 'decide': return locked.length + ' of ' + seated.length + ' teams have locked. ' + (locked.length >= seated.length && seated.length ? 'Everyone is in; the round works out by itself.' : 'Advance works out the round with the saved plans.');
     case 'resolving': return 'Working out the round.';
     case 'results': { const i = (g.reveal || { idx: -1 }).idx + 1; return i < pubLen() ? 'Advance steps through the results (' + i + ' of ' + pubLen() + ' shown).' : (r >= 5 ? 'Advance shows the final standings.' : 'Results are done. Advance starts round ' + (r + 1) + '.'); }
@@ -156,22 +157,22 @@ function controlsPanel() {
       h('div.boothstate', [h('span.smallcaps', g.round ? 'Round ' + g.round + ' of 5' : 'Lobby'), h('b#phasebig', g.phase.toUpperCase()), h('span#nextwhy.sub', recommended(g, seated, locked))]),
       g.phase === 'lobby' && mode === 'local' && unseated.length ? h('button#demoseat', { type: 'button', onclick: async () => { const now = new Date().toISOString(); for (const t of unseated) await A.store.upsertSeat({ id: uid(10), game_id: A.gid, team_id: t.team_id, name: 'Demo ' + t.team_id, slot: 0, role_override: 'solo', secret: uid(10), removed: false, connected_at: now, last_seen: now }); await refresh(); } }, 'Seat all teams (demo)') : null,
       label && g.phase !== 'final' ? h('button.go.big#next', { type: 'button', disabled: waiting, onclick: async () => {
-        if (g.phase === 'decide' && unlockedTeams.length && !confirm(unlockedTeams.length + ' teams have not locked. Their last saved plans will be used. Continue?')) return;
+        if ((g.phase === 'decide' || g.phase === 'market') && unlockedTeams.length && !confirm(unlockedTeams.length + ' teams have not locked. Their last saved plans will be used. Continue?')) return;
         await host.advance(pubLen()); await refresh();
       } }, waiting ? 'Waiting for teams to join' : (g.phase === 'lobby' ? label : 'Advance: ' + label)) : null,
       g.phase !== 'lobby' && g.phase !== 'final' ? h('button.danger#end', { type: 'button', onclick: async () => { if (confirm('End the game now? The current round is worked out and the final standings show on the projector.')) { await host.endGame(); await refresh(); } } }, 'End game') : null,
     ]),
     h('div.row.settings', [
       setting('autoAdvance', 'Advance on timers', false),
-      setting('requireWhy', 'Require the why sentence (turn off for testing)', true),
+      setting('requireWhy', 'Ask for a why sentence (off by default)', false),
       h('span.sub', 'Live auction: ' + (host.live ? 'on' : 'off') + ' (set when the game was created)'),
     ]),
-    h('p#lockstatus', g.phase === 'decide' ? 'Lock status: ' + locked.length + '/' + seated.length + '. ' + unlockedTeams.map(t => t.name + ' not locked (' + describeSaved(t.team_id) + ')').join('. ') : ''),
+    h('p#lockstatus', g.phase === 'decide' || g.phase === 'market' ? 'Lock status: ' + locked.length + '/' + seated.length + '. ' + unlockedTeams.map(t => t.name + ' not locked (' + describeSaved(t.team_id) + ')').join('. ') : ''),
     A.decisions.some(d => d.engine_error) ? h('p.warnline', A.decisions.filter(d => d.engine_error).map(d => d.team_id + ': ' + d.engine_error).join(' ')) : null,
     det('more', 'More controls', h('div.row', [
       g.clock && !g.clock.paused ? h('button#pause', { type: 'button', onclick: () => host.pause().then(refresh) }, 'Pause clock') : (g.clock ? h('button#pause', { type: 'button', onclick: () => host.resume().then(refresh) }, 'Resume clock') : null),
       g.clock ? h('button', { type: 'button', onclick: () => host.addTime(60).then(refresh) }, '+1 min') : null,
-      g.phase === 'decide' ? h('button#force', { type: 'button', onclick: async () => { if (confirm('This works out the round now with every saved plan.')) { await host.resolveNow(); await refresh(); } } }, 'Work out now') : null,
+      g.phase === 'decide' || g.phase === 'market' ? h('button#force', { type: 'button', onclick: async () => { if (confirm('This works out the round now with every saved plan.')) { await host.advance(pubLen()); await refresh(); } } }, 'Work out now') : null,
       ...unl,
       h('button#export', { type: 'button', onclick: async () => { const data = await host.exportAll(A.seats, A.decisions); const d = new Date(), p = n => String(n).padStart(2, '0'); const text = JSON.stringify(data, null, 1); download('parent-trap-' + A.gid + '-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + '.json', text); } }, 'Export game'),
       h('label', [h('input#autores', { type: 'checkbox', checked: set.autoResolve !== false, onchange: e => A.store.patchGame(A.gid, { settings: { ...(g.settings || {}), autoResolve: e.target.checked } }) }), ' Work out the round when every team has locked']),

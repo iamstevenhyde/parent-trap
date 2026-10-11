@@ -13,6 +13,9 @@ export const ROLE_DEFS = {
   cfo_ops3: { key: 'cfo_ops3', label: 'CFO and Head of Operations', perms: ['capital', 'ops'], hint: 'Three-person team: one seat owns both capital and corporate actions.' },
   solo: { key: 'solo', label: 'CEO (all jobs)', perms: ['lock', 'capital', 'market', 'ops'], hint: 'You are the only seat, so you hold every job.' },
 };
+// Steven, 2026-10-10 play-through ask 4: drop roles for now. Every seat holds every job; flip ROLES_ON to bring the rotation back.
+export const ROLES_ON = false;
+ROLE_DEFS.member = { key: 'member', label: 'Team member', perms: ['lock', 'capital', 'market', 'ops'], hint: 'Everyone on a team can do every job.' };
 export const ROLE_KEYS = Object.keys(ROLE_DEFS);
 
 // The cycle of roles for a team of n active seats. A seat at position i holds list[(i + round - 1) % n].
@@ -28,6 +31,7 @@ export function activeSeats(seats, teamId) {
   return seats.filter(x => x.team_id === teamId && !x.removed).sort((a, b) => (a.slot - b.slot) || (a.id < b.id ? -1 : 1));
 }
 export function roleFor(seats, seat, round) {
+  if (!ROLES_ON) return ROLE_DEFS.member;
   if (seat.role_override && ROLE_DEFS[seat.role_override]) return ROLE_DEFS[seat.role_override];
   const mates = activeSeats(seats, seat.team_id);
   const pos = Math.max(0, mates.findIndex(x => x.id === seat.id));
@@ -80,7 +84,7 @@ export function actionCost(view, a) {
 
 // The first reason the Lock button is off, in the order of spec 05 section 1.7. Returns null when it can lock.
 export function lockReason(view, plan, why, predicted, round, opts = {}) {
-  const needWhy = opts.requireWhy !== false;
+  const needWhy = opts.requireWhy === true;   // the why sentence and predicted value never block a lock unless the admin switches the gate on
   const m = meter(view, plan);
   if (m.short > 1e-6 && m.commits > 0) return 'Cash is ' + fmtM(Math.ceil(m.short)) + ' short. ' + (view.liveAuction ? 'That counts about ' + fmtM(Math.ceil(m.obl)) + ' you must pay at the end of the round (interest and the cost of running your businesses). Without it the game would force you to sell a business. Your market wins and build orders stay, so remove a capital request or an action.' : 'Remove a bid or a capital request.');
   const att = attentionUsed(plan, view.liveAuction);

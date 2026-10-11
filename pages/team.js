@@ -5,8 +5,8 @@
 import { $, h, friendlyError, fmtM, mmss, params, setParam, pageMode, safeGet, safeSet, safeSessionGet, safeSessionSet, toast, debounce } from './util.js';
 import { installGlossary } from './glossary.js';
 import { openStore, savedSeat, saveSeat, forgetSeat, resumeSeat, lookupCode, takeNewSeat, takeOverSeat, heartbeat } from './supa.js';
-import { roleFor, can, planFromRow, attentionUsed, meter, lockReason, activeSeats } from './roles.js';
-import { renderTopBar, renderNews, renderBusinesses, renderActions, renderMarket, renderLock, renderSteps } from './team_zones.js';
+import { roleFor, can, planFromRow, attentionUsed, meter, lockReason, activeSeats, ROLES_ON } from './roles.js';
+import { renderTopBar, renderBusinesses, renderActions, renderMarket, renderLock, renderSteps } from './team_zones.js';
 import { flowFor, liveBidPatch } from './flow.js';
 import { resultsOverlay, resolvingOverlay, capabilitiesPanel, historyPanel, autopsy } from './team_overlays.js';
 
@@ -111,7 +111,7 @@ async function refresh() {
   if (!me || me.removed) { forgetSeat(S.gid); return joinScreen('Your seat was removed. Enter a join code or ask your instructor.'); }
   if (me.secret !== S.info.secret) return screen(h('h1', 'Your seat moved to another laptop.'), h('button.go', { type: 'button', onclick: async () => { const r = await takeOverSeat(st, g, me); begin(r.info); } }, 'Take it back'));
   S.seat = me;
-  if (S.phaseSeen !== g.phase) { S.phaseSeen = g.phase; if (g.phase === 'market') S.tab = 'mkt'; else if (g.phase === 'decide') S.tab = 'biz'; }
+  S.phaseSeen = g.phase;   // the page no longer jumps to another tab when the phase changes: everything is open at once (ask 10)
   S.decisions = g.round > 0 ? await st.getDecisions(S.gid, g.round) : [];
   if (S.rev !== g.rev || S.round !== g.round) {
     S.rev = g.rev; S.round = g.round;
@@ -188,12 +188,12 @@ function buildCtx() {
     game: g, view, row, plan, role, locked, phase: g.phase, ui: S.ui, teamName: (S.teams.find(t => t.team_id === S.seat.team_id) || {}).name || '', seatName: S.seat.name,
     clockLeft: clockLeft(), seats: S.seats, invites, ceoName: ceo ? ceo.name : 'the CEO', savedAt: S.savedAt,
     lockedCount: S.decisions.filter(d => d.locked).length, seatedTeams,
-    editable: perm => !locked && can(role, perm) && !S.offline && (g.phase === 'decide' || (g.phase === 'market' && perm === 'market')),
+    editable: perm => !locked && can(role, perm) && !S.offline && (g.phase === 'decide' || g.phase === 'market'),
     notesFor: perm => (row.notes || []).filter(n => n.perm === perm),
     write, lock, rerender: () => render(), toast,
     suggest: perm => { const t = prompt('One line for the ' + perm + ' owner:'); if (t) write({ notes: [...(row.notes || []), { perm, from: S.seat.name, text: t, ts: Date.now() }] }); },
     meter: view ? meter(view, plan) : { total: 0, free: 0, short: 0 },
-    requireWhy: (g.settings || {}).requireWhy !== false,
+    requireWhy: (g.settings || {}).requireWhy === true,
     market: S.market, live: !!(view && view.liveAuction), hasMarket: !!(view && view.liveAuction && view.lots.length && g.round <= 4),
     liveBid: (lot, amount) => {
       const t = Date.now() * 1000 + (S.bidSeq = ((S.bidSeq || 0) + 1) % 1000);
@@ -213,7 +213,7 @@ function buildCtx() {
 function updateLockUI() {
   if (!S.view || !S.game) return;
   const ctx = buildCtx(), btn = $('.lockbtn'), rs = $('.reason');
-  if (btn) { const r = lockReason(ctx.view, ctx.plan, ctx.row.why, ctx.row.predicted, ctx.game.round, { requireWhy: ctx.requireWhy }); btn.disabled = !!r || ctx.phase !== 'decide'; if (rs) rs.textContent = r || 'Ready to lock.'; }
+  if (btn) { const r = lockReason(ctx.view, ctx.plan, ctx.row.why, ctx.row.predicted, ctx.game.round, { requireWhy: ctx.requireWhy }); btn.disabled = !!r || (ctx.phase !== 'decide' && ctx.phase !== 'market'); if (rs) rs.textContent = r || 'Ready to lock.'; }
   const sv = $('.saved'); if (sv && S.savedAt) sv.textContent = 'Saved ' + S.savedAt;
 }
 
@@ -235,8 +235,8 @@ function lobbyPanel(ctx) {
     h('p', ['Your team: ', nameIn, h('button', { type: 'button', disabled: !!team.renamed, onclick: async () => { await S.store.upsertTeam({ game_id: S.gid, team_id: team.team_id, name: nameIn.value.trim() || team.name, renamed: true }); toast('Team name saved.'); } }, team.renamed ? 'Name is set' : 'Save name')]),
     h('p.sub', 'You can change the team name once, here in the lobby.'),
     h('h3', 'Your team (' + mates.length + ' seats)'),
-    ...mates.map(x => h('div.matesrow', [h('b', x.name), ' ' + roleFor(S.seats, x, 1).label + (x.id === S.seat.id ? ' (you)' : '')])),
-    h('p.sub', 'Roles move one step each round, so everyone gets to be CEO at some point.'),
+    ...mates.map(x => h('div.matesrow', [h('b', x.name), (ROLES_ON ? ' ' + roleFor(S.seats, x, 1).label : '') + (x.id === S.seat.id ? ' (you)' : '')])),
+    ROLES_ON ? h('p.sub', 'Roles move one step each round, so everyone gets to be CEO at some point.') : h('p.sub', 'Everyone on the team can do every job. Any of you can lock in.'),
   ]);
 }
 
@@ -244,7 +244,8 @@ function render() {
   if (!S.game || !S.seat) return;
   if (typing()) { S.dirty = true; return; }
   S.dirty = false;
-  const ctx = buildCtx(), g = S.game, scroll = { y: window.scrollY };
+  // Remember where every scrolling pane was (the page itself, and each zone, which scrolls on its own) so a redraw never throws the player back to the top.
+  const ctx = buildCtx(), g = S.game, scroll = { y: window.scrollY, zones: Object.fromEntries([...app.querySelectorAll('.zone[data-zone]')].map(z => [z.dataset.zone, z.scrollTop])) };
   const root = h('div.teamapp');
   root.append(devBar());
   if (S.offline) root.append(h('div.offline', 'Offline. Your last choices are saved.'));
@@ -262,14 +263,14 @@ function render() {
     if (Number(rd) < g.round && lbl !== ctx.role.label) root.append(h('p.banner.rot', 'New round, new job. You are now ' + ctx.role.label + '.'));
   }
   if (g.phase === 'decide') safeSet(key, ctx.role.label + '|' + g.round);
-  if (ctx.phase !== 'final') root.append(renderNews(ctx));
   // tabs for narrow screens
   root.append(h('nav.tabs', [['biz', 'My Businesses'], ['act', 'Actions'], ['mkt', 'Market']].map(([k, l]) => h('button' + (S.tab === k ? '.on' : ''), { type: 'button', onclick: () => { S.tab = k; render(); } }, l))));
-  const zones = h('main.zones', { dataset: { tab: S.tab, phase: g.phase } }, [renderBusinesses(ctx), renderActions(ctx), renderMarket(ctx)]);
+  const noMkt = ctx.live && !ctx.hasMarket;   // nothing for sale this round (round 5): no empty market column
+  const zones = h('main.zones' + (noMkt ? '.nomkt' : ''), { dataset: { tab: S.tab, phase: g.phase } }, [renderBusinesses(ctx), renderActions(ctx), noMkt ? null : renderMarket(ctx)]);
   const reallyReadOnly = g.phase === 'news' || g.phase === 'results' || g.phase === 'resolving' || g.phase === 'final';
   if (reallyReadOnly) zones.classList.add('frozen');
   root.append(zones);
-  if (g.phase !== 'final' && g.phase !== 'market') root.append(renderLock(ctx));
+  if (g.phase !== 'final') root.append(renderLock(ctx));
   root.append(h('footer.toolbar', [
     h('button', { type: 'button', onclick: () => { S.drawer = 'caps'; render(); } }, 'Capabilities'),
     h('button', { type: 'button', onclick: () => { S.drawer = 'hist'; render(); } }, 'History'),
@@ -285,6 +286,7 @@ function render() {
   }
   if (S.drawer) root.append(h('div.overlay', { onclick: e => { if (e.target.classList.contains('overlay')) { S.drawer = null; render(); } } }, [S.drawer === 'caps' ? capabilitiesPanel(ctx.view) : historyPanel(S.results), h('button.go.closebtn', { type: 'button', onclick: () => { S.drawer = null; render(); } }, 'Close')]));
   app.replaceChildren(root);
+  for (const z of root.querySelectorAll('.zone[data-zone]')) if (scroll.zones[z.dataset.zone]) z.scrollTop = scroll.zones[z.dataset.zone];
   window.scrollTo(0, scroll.y);
 }
 

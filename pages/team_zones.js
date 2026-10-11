@@ -4,7 +4,7 @@
 import { h, fmtM, mmss, wordCount, pct } from './util.js';
 import { gl } from './glossary.js';
 import { icon, IND, artUrl } from './art.js';
-import { meter, attentionUsed, lockReason, describeAction, OWNER_LABEL, can } from './roles.js';
+import { meter, attentionUsed, lockReason, describeAction, OWNER_LABEL, can, ROLES_ON } from './roles.js';
 
 import { renderLiveMarket } from './team_market.js';
 export { renderSteps } from './team_market.js';
@@ -47,7 +47,7 @@ export function renderTopBar(ctx) {
       h('div.meterbar', { title: 'Cash plus credit line, with what your plan reserves' }, [h('i.res', { style: 'width:' + resPct + '%' })]),
       h('span.sub', view ? ['Cash ' + fmtM(cash) + ' plus ' + fmtM(line) + ' credit line, ', gl('reserved'), ' ' + fmtM(m.total) + ', free ' + fmtM(m.free)] : '')]),
     h('div.tb-att', [h('div.adots', dots), h('span.sub', [gl('attention'), ': ' + attLeft + ' of ' + (view ? view.attMax : 3) + ' attention left'])]),
-    h('div.tb-role', [h('span.badge', { title: role ? role.hint : '' }, role ? role.label : 'No seat'), h('span.sub', ctx.seatName + ' (you)')]),
+    h('div.tb-role', [ROLES_ON ? h('span.badge', { title: role ? role.hint : '' }, role ? role.label : 'No seat') : null, h('span.sub', ctx.seatName + ' (you)')]),
   ]);
 }
 
@@ -61,6 +61,21 @@ export function renderNews(ctx) {
     h('div.news-list', big ? body : body.slice(0, 1)),
     !big && items.length > 1 ? h('span.sub', '+' + (items.length - 1) + ' more on the big screen') : null,
   ]);
+}
+
+// ---------- what a business is, and how this round's news bears on it (Steven's asks 2 and 7) ----------
+function bizInfo(ctx, u) {
+  const { view } = ctx, news = (view.news || []).filter(n => (n.inds || []).includes(u.ind));
+  const hedgeable = (view.hedges || []).filter(hd => news.some(n => n.chain === hd.chain));
+  const kids = [];
+  if (u.hook) kids.push(h('p.hook', u.hook));
+  if (news.length) {
+    kids.push(h('p.newshead', 'In the news for ' + IND[u.ind].label + ' (' + news.length + '):'));
+    kids.push(h('ul.bznews', news.map(n => h('li', [h('span.chip.' + (n.tag || '').toLowerCase(), n.tag || 'News'), ' ' + n.text, n.hits && n.hits[u.ind] ? h('span.hit', ' If it happens: ' + n.hits[u.ind] + '.') : null]))));
+    if (hedgeable.length) kids.push(h('p.sub.cando', 'You can use Protect on this business against: ' + hedgeable.map(hd => hd.title).join(', ') + '.'));
+    else kids.push(h('p.sub.cando', 'A capital request below is your main way to prepare for this.'));
+  } else kids.push(h('p.sub', 'No headline this round names ' + IND[u.ind].label + '. The business moves with the economy and its own results.'));
+  return h('div.bizinfo', kids);
 }
 
 // ---------- My Businesses ----------
@@ -90,6 +105,7 @@ export function renderBusinesses(ctx) {
         h('div', [h('b', u.name), h('span.tag', { style: 'background:' + IND[u.ind].color }, IND[u.ind].label), u.w < 1 ? h('span.sub', ' (shared, half is yours)') : null])]),
       h('div.valrow', [gl('worth'), ' ' + fmtM(u.value), h('span.' + (u.trend >= 0 ? 'up' : 'down'), ' ' + (u.trend >= 0 ? '▲ ' : '▼ ') + trend)]),
       u.stress ? h('p.stressline', 'This business is losing money. A Turnaround may help, if the problem is the business and not the whole industry.') : null,
+      bizInfo(ctx, u),
       h('div.opts', opts),
     ]));
   }
@@ -107,6 +123,27 @@ const ACTION_ROWS = [
   { key: 'divest', perm: 'market', title: 'Divest', line: 'Sell a business. Sell it to the market for 85% of its stand-alone value, or list it for other teams at 80%, 100% or 120%.' },
   { key: 'hedge', perm: 'ops', title: 'Protect', line: 'Pay to cut the damage a risk in the news could do to one business.' },
 ];
+
+// Why an action is not on the table right now, or null when it is (Steven's ask 5). The reason shows on the row so a player always knows why.
+function notRelevant(ctx, key) {
+  const { view } = ctx;
+  switch (key) {
+    case 'integrate': return view.pairs.some(x => !x.exists) ? null : 'You need two businesses you fully own with no Integrate project yet.';
+    case 'turnaround': return view.units.some(u => u.canTurn && u.stress) ? null : (view.units.some(u => u.stress) ? 'The business that is losing money had a Turnaround too recently.' : 'None of your businesses is losing money, so a Turnaround has nothing to fix.');
+    case 'devcap': return view.capList.some(c => !view.capabilities[c]) ? null : 'You already have every capability.';
+    case 'divest': return ctx.game.round < 2 ? 'Divest opens in round 2.' : (view.divest.length ? null : 'You have no business to sell.');
+    case 'hedge': return view.hedges.length ? null : 'No risk in the news right now can be protected against.';
+    case 'deepdive': return (view.lots.some(l => !l.own && !l.deep) || view.pairs.some(x => !x.known)) ? null : 'Everything you could look into is already checked.';
+    default: return null;
+  }
+}
+function whyHere(ctx, key) {
+  const { view } = ctx;
+  if (key === 'turnaround') { const n = view.units.filter(u => u.stress).map(u => u.name); return n.length ? 'On the table because ' + n.join(' and ') + (n.length > 1 ? ' are' : ' is') + ' losing money.' : ''; }
+  if (key === 'hedge') return view.hedges.length ? 'On the table because of: ' + view.hedges.map(hd => hd.title).join(', ') + '.' : '';
+  if (key === 'integrate') { const n = view.pairs.filter(x => !x.exists).length; return n ? n + (n === 1 ? ' pair' : ' pairs') + ' of your businesses could be combined.' : ''; }
+  return '';
+}
 
 function select(items, onChange, val) {
   const s = h('select', { onchange: e => onChange(e.target.value) }, items.map(([v, l]) => h('option', { value: v, selected: v === val }, l)));
@@ -127,8 +164,8 @@ function pickerFor(ctx, key) {
       h('p.sub', 'Cost ' + fmtM(cur.cost) + '. ' + (cur.known ? (cur.known.related ? 'Your deep dive says they really share something.' : 'Your deep dive says they do not really share anything.') : 'Not checked yet. A Deep dive tells you if they really fit.')),
       h('button.go', { type: 'button', onclick: () => add({ type: 'integrate', a: cur.a, b: cur.b }) }, 'Add Integrate'), cancel);
   } else if (key === 'turnaround') {
-    const us = view.units.filter(u => u.canTurn && !plan.actions.some(a => a.type === 'turnaround' && a.unit === u.id));
-    if (!us.length) return h('div.picker', 'No business can take a Turnaround right now (one per business every two rounds).');
+    const us = view.units.filter(u => u.canTurn && u.stress && !plan.actions.some(a => a.type === 'turnaround' && a.unit === u.id));
+    if (!us.length) return h('div.picker', 'No business that is losing money can take a Turnaround right now (one per business every two rounds).');
     p.unit = p.unit && us.some(u => u.id === p.unit) ? p.unit : us[0].id;
     const cur = us.find(u => u.id === p.unit);
     form.append(select(us.map(u => [u.id, u.name + (u.stress ? ' (losing money)' : '')]), v => { p.unit = v; ctx.rerender(); }, cur.id),
@@ -178,11 +215,12 @@ export function renderActions(ctx) {
   zone.append(h('p.sub', 'Pick up to 3. Each costs 1 attention (' + Math.max(0, view.attMax - used) + ' left).' + (view.liveAuction ? ' Bids do not count; cash limits them.' : ' Bids and builds count too.')));
   if (full) zone.append(h('p.warnline', 'You have used all ' + view.attMax + ' attention points.'));
   for (const r of ACTION_ROWS) {
-    const ok = ctx.editable(r.perm), open = ctx.ui.picker && ctx.ui.picker.key === r.key;
-    const row = h('div.arow' + (ok && !full ? '' : '.dim'), { title: ok ? '' : greyTip(ctx, r.perm) }, [
+    const ok = ctx.editable(r.perm), open = ctx.ui.picker && ctx.ui.picker.key === r.key, irrelevant = notRelevant(ctx, r.key), here = irrelevant ? '' : whyHere(ctx, r.key);
+    const row = h('div.arow' + (ok && !full && !irrelevant ? '' : '.dim'), { title: ok ? '' : greyTip(ctx, r.perm) }, [
       h('div.arow-main', [h('b', r.gloss ? gl(r.gloss, r.title) : r.title), h('span.cost', '1 attention')]),
       h('p.sub', r.line),
-      h('button.add', { type: 'button', disabled: !ok || full || ctx.locked, onclick: () => { ctx.ui.picker = open ? null : { key: r.key }; ctx.rerender(); } }, open ? 'Close' : 'Choose'),
+      irrelevant ? h('p.sub.notnow', 'Not on the table now: ' + irrelevant) : (here ? h('p.sub.here', here) : null),
+      h('button.add', { type: 'button', disabled: !ok || full || ctx.locked || !!irrelevant, onclick: () => { ctx.ui.picker = open ? null : { key: r.key }; ctx.rerender(); } }, open ? 'Close' : 'Choose'),
     ]);
     zone.append(row);
     if (open) zone.append(pickerFor(ctx, r.key));
@@ -294,9 +332,9 @@ export function renderLock(ctx) {
       h('label', ['In one sentence, why is this the right plan?',
         h('input.why', { type: 'text', value: why, disabled: !canLock, placeholder: 'Our reason in one sentence', oninput: e => { ctx.write({ why: e.target.value }, true); const c = panel.querySelector('.wc'); if (c) c.textContent = Math.min(wc2(e.target.value), 8) + ' of 8 words'; } }), h('span.wc.sub', Math.min(wc, 8) + ' of 8 words')]),
       h('label', ['What will your whole company be worth at the end of this round? $', h('input.pred', { type: 'number', min: 0, step: 10, value: predicted === null || predicted === undefined ? '' : predicted, disabled: !canLock, oninput: e => ctx.write({ predicted: e.target.value === '' ? null : Number(e.target.value) }, true) }), 'M']),
-    ] : [h('p.sub', 'Testing mode: the why sentence and predicted value are switched off.')]),
+    ] : []),
     canLock
-      ? [h('button.lockbtn', { type: 'button', disabled: !!reason || ctx.phase !== 'decide', onclick: () => ctx.lock() }, 'Lock in our plan'), h('span.reason', reason || (row.engine_error ? '' : 'Ready to lock.'))]
+      ? [h('button.lockbtn', { type: 'button', disabled: !!reason || (ctx.phase !== 'decide' && ctx.phase !== 'market'), onclick: () => ctx.lock() }, 'Lock in our plan'), h('span.reason', reason || (row.engine_error ? '' : 'Ready to lock.'))]
       : [h('p.sub', can(ctx.role, 'lock') ? 'You lock the plan when decisions open.' : 'Only the CEO can lock. Waiting for ' + ctx.ceoName + '.'), suggestBar(ctx, 'lock')],
     row.engine_error ? h('p.warnline', row.engine_error) : null,
     ctx.savedAt ? h('span.sub.saved', 'Saved ' + ctx.savedAt) : null,

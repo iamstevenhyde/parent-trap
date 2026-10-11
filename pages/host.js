@@ -11,9 +11,9 @@ import { buildTeamView, buildPublic, buildResult, buildFinal, exportLog } from '
 import { planFromRow, attentionUsed } from './roles.js';
 import { makeCode, makeGameId } from './util.js';
 import { buildCostOf, feeRate, budgetOf, obligations } from '../engine/model.js';
+import { chainById } from '../engine/engine.js';
 import { MARKET_SECONDS, SNIPE_MS, openMarket, restoreMarket, placeBid, botTick as marketBotTick, closeMarket, marketSnapshot } from './market.js';
 
-export const NEWS_SECONDS = 60;
 export const RESULT_STEP_SECONDS = 9;   // auto-advance only: how long each results reveal stays up
 export const DECIDE_SECONDS = { 1: 360, 2: 360, 3: 360, 4: 480, 5: 300 };
 export const DEFAULT_NAMES = ['Alpine Holdings', 'Frontier Capital', 'Summit Partners', 'Rangeview Group', 'Bitterroot Capital', 'Sawtooth Holdings', 'Teton Ventures', 'Wasatch Partners', 'Sagebrush Capital', 'Bighorn Group'];
@@ -23,8 +23,18 @@ export function newGameRow({ seed, teams, bots }, opts = {}) {
   return {
     id, seed: seed || Math.floor(10000 + Math.random() * 89999), team_count: teams, bot_count: bots, phase: 'lobby', round: 0,
     clock: null, reveal: null, rev: 0, status: 'active', admin_key: makeCode(8),
-    settings: { autoResolve: true, liveAuction: opts.liveAuction !== false, requireWhy: opts.requireWhy !== false, autoAdvance: false },
+    settings: { autoResolve: true, liveAuction: opts.liveAuction !== false, requireWhy: opts.requireWhy === true, autoAdvance: false },
   };
+}
+
+const pctWords = (x, up, down) => (x > 1 ? up + ' ' : down + ' ') + Math.round(Math.abs(x - 1) * 100) + '%';
+function effectWords(x) {
+  const out = [];
+  if (x.d) out.push(pctWords(x.d, 'demand up', 'demand down'));
+  if (x.p) out.push(pctWords(x.p, 'prices up', 'prices down'));
+  if (x.c) out.push(pctWords(x.c, 'input costs up', 'input costs down'));
+  if (x.v) out.push(pctWords(x.v, 'valuation up', 'valuation down'));
+  return out.join(', ');
 }
 
 export class Host {
@@ -34,7 +44,7 @@ export class Host {
   // Run one thing at a time, so realtime callbacks and button clicks never overlap.
   run(fn) { const p = this.queue.then(fn); this.queue = p.catch(e => console.error(e)); return p; }
 
-  async createNew({ seed, teams = 20, bots = 0, liveAuction = true, requireWhy = true }) {
+  async createNew({ seed, teams = 20, bots = 0, liveAuction = true, requireWhy = false }) {
     const row = newGameRow({ seed, teams, bots }, { liveAuction, requireWhy });
     const used = new Set();
     await this.store.createGame(row);
@@ -182,7 +192,15 @@ export class Host {
     await this.store.putSnapshot(this.gid, this.state.round, 'view', tid, view);
     await this.bumpRev();
   }
-  newsItems() { return this.state.events.filter(e => e.round === this.state.round && e.type === 'ticker').map(e => ({ tag: e.tag, text: e.text, stage: e.stage, ts: Date.now() })); }
+  // Each headline also says which industries it could move and how, so a team page can show the news that matters to each business.
+  newsItems() {
+    return this.state.events.filter(e => e.round === this.state.round && e.type === 'ticker').map(e => {
+      const eff = e.chain && chainById[e.chain] ? chainById[e.chain].stage3.effects : null;
+      const item = { tag: e.tag, text: e.text, stage: e.stage, ts: Date.now() };
+      if (eff) { item.chain = e.chain; item.inds = Object.keys(eff); item.hits = Object.fromEntries(Object.entries(eff).map(([ind, x]) => [ind, effectWords(x)])); }
+      return item;
+    });
+  }
   async publishViews() {
     for (const tid of this.state.teamIds) {
       const view = buildTeamView(this.state, tid, (this.winBids || {})[tid] || []);
@@ -217,8 +235,17 @@ export class Host {
       await this.publishViews();
       await this.publishEvents();
       await this.publishNews();
-      await this.bumpRev({ phase: 'news', round: 1, clock: this.clockFor(NEWS_SECONDS), reveal: null });
+      await this._openPlay(1);
     });
+  }
+  // Steven's asks 1 and 10 (2026-10-10): no news-reading phase and no separate steps. When a round opens, the market, the businesses,
+  // the corporate actions and the lock are all open at once and stay open until the instructor closes the round.
+  async _openPlay(round) {
+    this.winBids = {};
+    if (this.hasMarket()) {
+      this.market = openMarket(this.state);
+      await this.publishMarket({ phase: 'market', round, reveal: null, clock: this.clockFor((MARKET_SECONDS[round] || 0) + (DECIDE_SECONDS[round] || 0)) });
+    } else await this.bumpRev({ phase: 'decide', round, reveal: null, clock: this.clockFor(DECIDE_SECONDS[round]) });
   }
   toDecide() {
     return this.run(async () => {
@@ -325,7 +352,7 @@ export class Host {
       await this.publishViews();
       await this.publishNews();
       await this.publishEvents();
-      await this.bumpRev({ phase: 'news', round: r + 1, clock: this.clockFor(NEWS_SECONDS), reveal: null });
+      await this._openPlay(r + 1);
     });
   }
   // Admin "Next" button label and action for the current phase.
@@ -333,7 +360,7 @@ export class Host {
     const p = this.game.phase, r = this.game.round;
     if (p === 'lobby') return 'Start game';
     if (p === 'news') return this.hasMarket() ? 'Open the market' : 'Open decisions';
-    if (p === 'market') return 'Close the market';
+    if (p === 'market') return 'Close the round';
     if (p === 'decide') return 'Work out the round';
     if (p === 'results') return revealLabel ? 'Reveal: ' + revealLabel : r >= 5 ? 'Show final standings' : 'Start round ' + (r + 1);
     return null;
@@ -343,7 +370,7 @@ export class Host {
     const p = this.game.phase;
     if (p === 'lobby') return this.startGame();
     if (p === 'news') return this.hasMarket() ? this.toMarket() : this.toDecide();
-    if (p === 'market') return this.closeMarketNow();
+    if (p === 'market') return this.closeMarketNow().then(() => this.resolveNow());   // one press closes the market and works out the round
     if (p === 'decide') return this.resolveNow();
     if (p === 'results') {
       const rv = this.game.reveal || { idx: -1 };
