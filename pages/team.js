@@ -7,7 +7,7 @@ import { installGlossary } from './glossary.js';
 import { openStore, savedSeat, saveSeat, forgetSeat, resumeSeat, lookupCode, takeNewSeat, takeOverSeat, heartbeat } from './supa.js';
 import { roleFor, can, planFromRow, attentionUsed, meter, lockReason, activeSeats, ROLES_ON } from './roles.js';
 import { renderTopBar, renderBusinesses, renderActions, renderMarket, renderLock, renderSteps } from './team_zones.js';
-import { flowFor, liveBidPatch } from './flow.js';
+import { flowFor, liveBidPatch, coInvitePatch, coJoinPatch, leadsLot, shareOfLot } from './flow.js';
 import { resultsOverlay, resolvingOverlay, capabilitiesPanel, historyPanel, autopsy } from './team_overlays.js';
 
 const app = document.getElementById('app');
@@ -188,7 +188,7 @@ function buildCtx() {
     }
   }
   const opening = g.phase === 'market' && !!(g.reveal && g.reveal.opening);   // the starting auction: only the auction is open
-  const o0 = S.opening0 && S.opening0.final ? S.opening0.final.results.filter(r => r.winner === S.seat.team_id).map(r => ({ name: r.name, price: r.price })) : null;
+  const o0 = S.opening0 && S.opening0.final ? S.opening0.final.results.filter(r => r.winner === S.seat.team_id || r.partner === S.seat.team_id).map(r => ({ name: r.name, price: r.price, together: !!r.partner })) : null;
   const ctx = {
     opening, openingResult: o0, game: g, view, row, plan, role, locked, phase: g.phase, ui: S.ui, teamName: (S.teams.find(t => t.team_id === S.seat.team_id) || {}).name || '', seatName: S.seat.name,
     clockLeft: clockLeft(), seats: S.seats, invites, ceoName: ceo ? ceo.name : 'the CEO', savedAt: S.savedAt,
@@ -199,14 +199,23 @@ function buildCtx() {
     suggest: perm => { const t = prompt('One line for the ' + perm + ' owner:'); if (t) write({ notes: [...(row.notes || []), { perm, from: S.seat.name, text: t, ts: Date.now() }] }); },
     meter: view ? meter(view, plan) : { total: 0, free: 0, short: 0 },
     requireWhy: (g.settings || {}).requireWhy === true,
-    market: S.market, live: !!(view && view.liveAuction), hasMarket: !!(view && view.liveAuction && view.lots.length && g.round <= 4),
+    market: S.market, live: !!(view && view.liveAuction), hasMarket: !!(view && view.liveAuction && view.lots.length && g.round <= 5),
     liveBid: (lot, amount) => {
       const t = Date.now() * 1000 + (S.bidSeq = ((S.bidSeq || 0) + 1) % 1000);
       write(liveBidPatch(row.market, lot, amount, t));
     },
+    // alliance: invite another team to bid together, or accept the invitation another team sent
+    coInvite: (lot, ally, amount) => {
+      const t = Date.now() * 1000 + (S.bidSeq = ((S.bidSeq || 0) + 1) % 1000);
+      write(coInvitePatch(row.market, lot, ally, amount, t));
+    },
+    coJoin: (lot, from) => {
+      const t = Date.now() * 1000 + (S.bidSeq = ((S.bidSeq || 0) + 1) % 1000);
+      write(coJoinPatch(row.market, lot, from, t));
+    },
   };
   if (view && S.market && g.phase === 'market') {
-    const led = S.market.lots.filter(l => l.high && l.high.team === S.seat.team_id), sum = led.reduce((s, l) => s + l.price * (1 + view.feeRate), 0);
+    const led = S.market.lots.filter(l => leadsLot(l, S.seat.team_id)), sum = led.reduce((s, l) => s + l.price * shareOfLot(l) * (1 + view.feeRate), 0);
     const oblNow = (S.market.obl || {})[view.teamId], base = ctx.meter.total - ctx.meter.obl + sum + (oblNow === undefined ? ctx.meter.obl : oblNow);
     ctx.led = led; ctx.meter = { ...ctx.meter, total: base, free: view.budget - base, short: Math.max(0, base - view.budget), obl: oblNow === undefined ? ctx.meter.obl : oblNow };
   } else ctx.led = [];
@@ -271,7 +280,7 @@ function render() {
   if (g.phase === 'decide') safeSet(key, ctx.role.label + '|' + g.round);
   // tabs for narrow screens
   root.append(h('nav.tabs', [['biz', 'My Businesses'], ['act', 'Actions'], ['mkt', 'Market']].map(([k, l]) => h('button' + (S.tab === k ? '.on' : ''), { type: 'button', onclick: () => { S.tab = k; render(); } }, l))));
-  const noMkt = ctx.live && !ctx.hasMarket;   // nothing for sale this round (round 5): no empty market column
+  const noMkt = ctx.live && !ctx.hasMarket;   // nothing is listed this round (a round where every company has an owner): no empty market column
   const zones = h('main.zones' + (noMkt ? '.nomkt' : ''), { dataset: { tab: S.tab, phase: g.phase } }, [renderBusinesses(ctx), renderActions(ctx), noMkt ? null : renderMarket(ctx)]);
   const reallyReadOnly = g.phase === 'news' || g.phase === 'results' || g.phase === 'resolving' || g.phase === 'final';
   if (reallyReadOnly) zones.classList.add('frozen');

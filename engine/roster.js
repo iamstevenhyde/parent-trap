@@ -24,7 +24,7 @@ function register(baseId, copy) {
 // What a game with n tables needs. cfgBase is the engine CONFIG (for the base lot lists).
 export function rosterFor(n, cfgBase) {
   const base = COMPANIES;
-  const out = { companies: [...base], inheritance: INHERITANCE.map(r => ({ ...r })), round1Lots: [...cfgBase.ROUND1_LOTS], lotsR2: cfgBase.LOTS_R2, lotsR3: cfgBase.LOTS_R3, lotsR4: cfgBase.LOTS_R4_MAX, inheritedClones: [] };
+  const out = { companies: [...base], inheritance: INHERITANCE.map(r => ({ ...r })), round1Lots: [...cfgBase.ROUND1_LOTS], lotsR2: cfgBase.LOTS_R2, lotsR3: cfgBase.LOTS_R3, lotsR4: cfgBase.LOTS_R4_MAX, lotsR5: cfgBase.LOTS_R5_MAX, inheritedClones: [] };
   if (n <= 8) return out;
   const used = {};                                  // base id -> copies made so far
   const make = baseId => { used[baseId] = (used[baseId] || 0) + 1; const co = register(baseId, used[baseId]); out.companies.push(co); return co.id; };
@@ -40,10 +40,10 @@ export function rosterFor(n, cfgBase) {
   for (let i = 0; out.round1Lots.length < wantLots; i++) out.round1Lots.push(make(plain[i % plain.length]));
   // later rounds: lots per round scale with the table count, and the pool has to be big enough to supply them
   const scale = n / 8;
-  out.lotsR2 = Math.round(cfgBase.LOTS_R2 * scale); out.lotsR3 = Math.round(cfgBase.LOTS_R3 * scale); out.lotsR4 = Math.round(cfgBase.LOTS_R4_MAX * scale);
+  out.lotsR2 = Math.round(cfgBase.LOTS_R2 * scale); out.lotsR3 = Math.round(cfgBase.LOTS_R3 * scale); out.lotsR4 = Math.round(cfgBase.LOTS_R4_MAX * scale); out.lotsR5 = Math.round(cfgBase.LOTS_R5_MAX * scale);
   const poolBase = base.filter(c => !c.scarce && !INHERITANCE.some(r => r.companies.includes(c.id))).map(c => c.id);
   const poolNow = base.length - 16 - 4 - cfgBase.ROUND1_LOTS.length;          // base companies free for the pool when 8 tables play
-  const need = out.lotsR2 + out.lotsR3 + out.lotsR4 - poolNow + 2;
+  const need = out.lotsR2 + out.lotsR3 + out.lotsR4 - poolNow + 2;   // round 5 draws on the leftovers, so the 10/11 rosters are unchanged
   for (let i = 0; i < need; i++) make(poolBase[i % poolBase.length]);
   return out;
 }

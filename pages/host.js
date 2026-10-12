@@ -13,9 +13,9 @@ import { makeCode, makeGameId } from './util.js';
 import { buildCostOf, feeRate, budgetOf, obligations } from '../engine/model.js';
 import { chainById } from '../engine/engine.js';
 import { hash01 } from '../engine/rng.js';
-import { MARKET_SECONDS, SNIPE_MS, openMarket, restoreMarket, placeBid, botTick as marketBotTick, closeMarket, marketSnapshot } from './market.js';
+import { MARKET_SECONDS, SNIPE_MS, openMarket, restoreMarket, placeBid, proposeCoBid, joinCoBid, botTick as marketBotTick, closeMarket, marketSnapshot } from './market.js';
 
-export const RESULT_STEP_SECONDS = 9;   // auto-advance only: how long each results reveal stays up
+export const RESULT_STEP_SECONDS = 12;   // auto-advance only: how long each results reveal stays up
 export const DECIDE_SECONDS = { 1: 360, 2: 360, 3: 360, 4: 480, 5: 300 };
 export const OPENING_SECONDS = 240;   // the starting auction: only the auction is open, then round 1 opens with the lots nobody won on the side
 export const DEFAULT_NAMES = ['Alpine Holdings', 'Frontier Capital', 'Summit Partners', 'Rangeview Group', 'Bitterroot Capital', 'Sawtooth Holdings', 'Teton Ventures', 'Wasatch Partners', 'Sagebrush Capital', 'Bighorn Group'];
@@ -300,7 +300,7 @@ export class Host {
   }
 
   // ---- the live market (phase 'market', between news and decide) ----
-  hasMarket() { return this.live && this.state && this.state.lots.length > 0 && this.state.round <= 4; }
+  hasMarket() { return this.live && this.state && this.state.lots.length > 0 && this.state.round <= 5; }   // round 5 has a market too (Steven, 2026-10-12)
   toMarket() {
     return this.run(async () => {
       if (this.game.phase !== 'news') return;
@@ -326,8 +326,13 @@ export class Host {
     let accepted = false;
     for (const [lot, b] of fresh) {
       m.seen[tid + '|' + lot] = b.t;
-      const r = placeBid(m, this.state, tid, lot, b.amount, this._restFor(tid, row));
-      (m.acks[tid] = m.acks[tid] || {})[lot] = { t: b.t, ok: r.ok, reason: r.reason || '', amount: r.ok ? r.amount : Number(b.amount) };
+      const rest = this._restFor(tid, row);
+      m.rests = m.rests || {}; m.rests[tid] = rest;
+      // an alliance move is an invitation to a partner or the partner's acceptance; anything else is an ordinary bid
+      const r = b.co === 'invite' ? proposeCoBid(m, this.state, tid, lot, b.ally, b.amount, rest)
+        : b.co === 'join' ? joinCoBid(m, this.state, tid, lot, b.ally, rest)
+        : placeBid(m, this.state, tid, lot, b.amount, rest);
+      (m.acks[tid] = m.acks[tid] || {})[lot] = { t: b.t, ok: r.ok, reason: r.reason || '', amount: r.ok ? r.amount : Number(b.amount), ...(b.co ? { co: b.co, ally: b.ally } : {}) };
       if (r.ok) accepted = true;
     }
     const c = this.game.clock, patch = {};
@@ -401,7 +406,7 @@ export class Host {
       const row = rows.find(x => x.team_id === tid), prev = (row && row.market) || {};
       let builds = prev.builds || [], note = null;
       // a build ordered at the same moment as a winning bid can push a team over its cash: the bid stands, the build is cancelled
-      const fee = 1 + feeRate(this.state, tid), wins = (out.humanBids[tid] || []).reduce((s, b) => s + b.amount * fee, 0);
+      const fee = 1 + feeRate(this.state, tid), wins = (out.humanBids[tid] || []).reduce((s, b) => s + b.amount * (b.ally ? 0.5 : 1) * fee, 0);
       const oblWin = obligations(this.state, tid, { bids: out.humanBids[tid] || [] }).total;
       if (builds.length && wins + this._restFor(tid, { market: { builds } }) + oblWin > budgetOf(this.state, tid) + 1e-9) { builds = []; note = 'Your build order was cancelled because your winning bids, plus the interest and running costs due at the end of the round, already use your cash.'; }
       await this.store.patchDecision(this.gid, tid, r, { market: { bids: out.humanBids[tid] || [], builds, live: {}, closed: true }, ...(note ? { engine_error: note } : {}) });

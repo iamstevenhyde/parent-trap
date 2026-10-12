@@ -14,7 +14,7 @@ export const STEPS = [
 export function flowFor(f) {
   const done = [];
   const mkt = f.hasMarket;
-  if (f.opening && !f.locked) return { step: 0, done, title: 'Opening auction', text: 'Bid for your third company. You started with two. When the auction closes, round 1 begins: you will see what you won, and the capital requests, corporate actions and the lock all open. If you win nothing, you get one automatic build.', mine: true };
+  if (f.opening && !f.locked) return { step: 0, done, title: 'Opening auction', text: 'Bid for your third company. You started with two. When the auction closes, round 1 begins: you will see what you won, and the capital requests, corporate actions and the lock all open. If you win nothing, you can still bid in round 1. If you still have no new company at the end of round 1, the game orders one for you, and it arrives in round 3 at 70% strength.', mine: true };
   switch (f.phase) {
     case 'lobby':
       return { step: 0, done, title: 'Waiting to start', text: 'Your instructor starts the game when every team has joined.', mine: false };
@@ -40,4 +40,17 @@ export function flowFor(f) {
 export function liveBidPatch(market, lot, amount, t) {
   const m = market || {};
   return { market: { bids: m.bids || [], builds: m.builds || [], live: { ...(m.live || {}), [lot]: { amount: Number(amount), t } }, closed: false } };
+}
+
+// A team leads a lot alone (high.team) or as half of a joint bid (high.ally). Used by the market, the team page and the projector so they cannot drift apart.
+export const leadsLot = (lot, tid) => !!lot && !!lot.high && (lot.high.team === tid || lot.high.ally === tid);
+export const shareOfLot = lot => (lot && lot.high && lot.high.ally ? 0.5 : 1);
+// Row patches for the two alliance moves: invite a partner to bid together, and accept an invitation. Same shape as a live bid so the host reads them the same way.
+export function coInvitePatch(market, lot, ally, amount, t) {
+  const m = market || {};
+  return { market: { bids: m.bids || [], builds: m.builds || [], live: { ...(m.live || {}), [lot]: { amount: Number(amount), t, co: 'invite', ally } }, closed: false } };
+}
+export function coJoinPatch(market, lot, from, t) {
+  const m = market || {};
+  return { market: { bids: m.bids || [], builds: m.builds || [], live: { ...(m.live || {}), [lot]: { amount: 0, t, co: 'join', ally: from } }, closed: false } };
 }

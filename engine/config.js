@@ -79,7 +79,8 @@ export const CONFIG = {
   // listings
   ROUND1_LOTS: ['C2', 'C5', 'R3', 'G3', 'A4', 'S2', 'E1', 'E5', 'A3', 'E4'],   // reworked 2026-10-08 with the inheritance table
   SCARCE: ['S2', 'S3', 'E1'],
-  LOTS_R2: 3, LOTS_R3: 3, LOTS_R4_MAX: 5,
+  LOTS_R2: 3, LOTS_R3: 3, LOTS_R4_MAX: 5, LOTS_R5_MAX: 5,   // round 5 (2026-10-12): the market stays open to the end; LOTS_R5_MAX scales like round 4
+  LIST_LAST_ROUND: 4,   // listings for other teams open rounds 2 to 4 (a listing shows one round later, so the last one is bought in round 5)
 
   // counterfactual
   CF_SEED_CASH: 0,

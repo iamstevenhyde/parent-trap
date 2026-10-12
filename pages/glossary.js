@@ -16,7 +16,7 @@ export const GLOSSARY = {
   anergy: ['Anergy', 'The opposite of synergy: two businesses that are worth less together than apart.'],
   winners_curse: ['Winner\'s curse', 'In a sealed auction the team with the highest guess wins, and the highest guess is usually too high. So the winner often pays more than the company is worth.'],
   complexity: ['Complexity cost', 'The price of running many different businesses. Each extra unrelated business takes more of your attention and costs a slice of your value every round.'],
-  cobid: ['Co-bid', 'Two teams bid together on one company. Each pays half and gets half the result, and your two estimates are averaged, which helps avoid overpaying.'],
+  cobid: ['Co-bid (alliance)', 'Two teams with players bid together on one company. One team invites the other and the bid only counts once the other joins. Each team then pays half the price (plus its own deal fee) and owns half the company and half its value. It ends when the market closes; there is no joint venture after that. A company two teams share cannot be Integrated, given a Turnaround or sold by either team alone, and its capital request only goes through if both teams pick the same option. Compare your estimates before you join.'],
   capability: ['Capability', 'A skill your company earns by doing the same kind of move well twice.'],
   catalog: ['Listed value', 'The public price tag. Everyone sees the same number. It is not always the truth.'],
   signal: ['Your team\'s estimate', 'A range for the company\'s true value. The real value is usually inside it but can fall outside. Each team gets its own range. Listed value and the seller\'s claim are public and may be off. A deep dive narrows the range.'],

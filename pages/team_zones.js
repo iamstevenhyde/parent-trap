@@ -131,16 +131,16 @@ const ACTION_ROWS = [
   { key: 'turnaround', perm: 'ops', title: 'Turnaround', gloss: 'turnaround',
     line: 'Step in and fix a business that is losing money.',
     pays: 'It works only when the problem is the business itself. If the whole industry is down, it does nothing and the money is lost. When it works, the business gains about 12% of its value next round.',
-    costs: () => 'About 4% of the business\'s value, at least $8M, plus 1 attention. One per business every two rounds.' },
+    costs: () => 'About 4% of the business\'s value, at least $8M, plus 1 attention. Cooldown: one per business every two rounds, so a business that had one last round waits one round. This is a timing rule, not a lock.' },
   { key: 'devcap', perm: 'ops', title: 'Develop capability', gloss: 'capability', first: true,
     line: 'Practice one kind of move to earn a lasting skill. The skills are Acquirer (buy and build better), Integrator, Operator (turnarounds) and Analyst (deep dives).',
     pays: 'Doing the same kind of move twice earns the skill for the rest of the game, and a Develop capability counts as one of the two. So starting in round 1 pays most. The money is wasted if you never earn the skill.',
     costs: (v) => fmtM(v.costs.devcap) + ' plus 1 attention.' },
   { key: 'divest', perm: 'market', title: 'Divest', line: 'Sell a business. You can sell it to the market, or list it for other teams.',
-    pays: 'Sell now: you get 85% of this business\'s stand-alone value, as cash this round. List it: you pick 80%, 100% or 120% of that same stand-alone value; another team may take it next round and you get that full price; if nobody takes it you keep it. Stand-alone value is shown in the picker below. Divest opens in round 2, and listing is open in rounds 2 and 3 only.',
+    pays: 'Sell now: you get 85% of this business\'s stand-alone value, as cash this round. List it: you pick 80%, 100% or 120% of that same stand-alone value; another team may take it next round and you get that full price; if nobody takes it you keep it. Stand-alone value is shown in the picker below. Divest opens in round 2 and stays open every round through round 5. Listing for other teams is open in rounds 2 to 4 and shows to the other teams one round later, so a company you list in round 4 can still be bought in round 5.',
     costs: () => 'The 15% haircut if you sell to the market, plus 1 attention.' },
   { key: 'hedge', perm: 'ops', title: 'Protect', line: 'Pay to cut the damage a risk in the news could do to one business.',
-    pays: 'If the risk happens, the hit to that business is cut in half. If it does not, the money is lost. It only appears while a risk is in the news and can still be reached.',
+    pays: 'If the risk happens, the hit to that business is cut in half. If it does not, the money is lost. Timing rule: a risk can be protected against in the two rounds after it first shows up in the news, so each risk has its own window and the choice appears only while its window is open.',
     costs: () => 'A few percent of that business\'s value (shown when you choose), plus 1 attention.' },
 ];
 const CAP_BENEFIT = { acquirer: 'your bids lose less to the winner\'s curse and builds cost less', integrator: 'Integrate costs 20% less and pays more', operator: 'Turnarounds cost less and pay more', analyst: 'Deep dives are cheaper and sharper' };
@@ -186,7 +186,7 @@ function pickerFor(ctx, key) {
       h('button.go', { type: 'button', onclick: () => add({ type: 'integrate', a: cur.a, b: cur.b }) }, 'Add Integrate'), cancel);
   } else if (key === 'turnaround') {
     const us = view.units.filter(u => u.canTurn && u.stress && !plan.actions.some(a => a.type === 'turnaround' && a.unit === u.id));
-    if (!us.length) return h('div.picker', 'No business that is losing money can take a Turnaround right now (one per business every two rounds).');
+    if (!us.length) return h('div.picker', 'No business that is losing money can take a Turnaround right now (cooldown: one per business every two rounds, so wait one round after the last one).');
     p.unit = p.unit && us.some(u => u.id === p.unit) ? p.unit : us[0].id;
     const cur = us.find(u => u.id === p.unit);
     form.append(select(us.map(u => [u.id, u.name + (u.stress ? ' (losing money)' : '')]), v => { p.unit = v; ctx.rerender(); }, cur.id),
@@ -215,7 +215,7 @@ function pickerFor(ctx, key) {
     const cur = us.find(d => d.unit === p.unit), nm = id => view.units.find(u => u.id === id).name;
     const modes = [['market', 'Sell to the market for ' + fmtM(cur.market) + ' (85% of stand-alone value, cash this round)'], ...cur.list.map(l => ['list:' + l.f, 'List for other teams at ' + Math.round(l.f * 100) + '% of stand-alone value (' + fmtM(l.price) + '), shown next round, you keep it until someone takes it'])];
     p.mode = p.mode && modes.some(m => m[0] === p.mode) ? p.mode : 'market';
-    form.append(select(us.map(d => [d.unit, nm(d.unit)]), v => { p.unit = v; ctx.rerender(); }, cur.unit), h('p.sub', 'Stand-alone value ' + fmtM(cur.sa) + '. 85% = ' + fmtM(cur.market) + '.' + (cur.list.length ? '' : ' Listing is open in rounds 2 and 3 only, so it is not offered this round.')), select(modes, v => { p.mode = v; }, p.mode),
+    form.append(select(us.map(d => [d.unit, nm(d.unit)]), v => { p.unit = v; ctx.rerender(); }, cur.unit), h('p.sub', 'Stand-alone value ' + fmtM(cur.sa) + '. 85% = ' + fmtM(cur.market) + '.' + (cur.list.length ? '' : ' Listing for other teams is open in rounds 2 to 4, so it is not offered this round.')), select(modes, v => { p.mode = v; }, p.mode),
       h('button.go', { type: 'button', onclick: () => add(p.mode === 'market' ? { type: 'divest', unit: cur.unit, mode: 'market' } : { type: 'divest', unit: cur.unit, mode: 'list', f: Number(p.mode.split(':')[1]) }) }, 'Add Divest'), cancel);
   } else if (key === 'hedge') {
     if (!view.hedges.length) return h('div.picker', 'No risk in the news can be protected against right now.');
@@ -234,8 +234,8 @@ export function renderActions(ctx) {
   const zone = h('section.zone.zone-act' + (anyOk ? '' : '.grey'), { dataset: { zone: 'act' } });
   zone.append(h('h2', ['Corporate actions ', noteDot(ctx, 'ops'), suggestBar(ctx, 'ops')]));
   zone.append(h('p.sub', 'You can do up to 3 corporate actions each round. Each uses 1 of your 3 attention points (' + Math.max(0, view.attMax - used) + ' left), including a Deep dive on a company for sale. Attention resets next round and cannot be saved.' + (view.liveAuction ? ' Bids do not use attention; cash limits them.' : ' Bids and builds use attention too.')));
-  if (ctx.game.round === 5) zone.append(h('p.sub.notnow', 'Round 5: no companies are for sale and no builds can start, so your portfolio is fixed. You can still choose capital requests and corporate actions.'));
-  else if (ctx.game.round >= 4) zone.append(h('p.sub.notnow', 'Listing a business for other teams is no longer available after round 3. You can still sell to the market.'));
+  if (ctx.game.round === 5) zone.append(h('p.sub.notnow', 'Round 5 is the last round. The market is open, so you can still win a company, and what you win counts in the final standings. New builds closed after round 3, because a build takes 2 rounds to arrive and a later one would land after the game ends. Listing a business for other teams closed after round 4, because a listing shows to the others one round later. You can still sell a business to the market.'));
+  else if (ctx.game.round === 4) zone.append(h('p.sub.notnow', 'Round 4: you can still list a business for other teams (it shows in round 5) and sell one to the market. New builds closed after round 3, because a build takes 2 rounds to arrive and a later one would land after the game ends.'));
   if (full) zone.append(h('p.warnline', 'You have used all ' + view.attMax + ' attention points.'));
   for (const r of ACTION_ROWS) {
     const ok = ctx.editable(r.perm), open = ctx.ui.picker && ctx.ui.picker.key === r.key, irrelevant = notRelevant(ctx, r.key), here = irrelevant ? '' : whyHere(ctx, r.key);
@@ -298,7 +298,7 @@ export function renderMarket(ctx) {
   const zone = h('section.zone.zone-mkt' + (ok ? '' : '.grey'), { dataset: { zone: 'mkt' }, title: ok ? '' : greyTip(ctx, 'market') });
   zone.append(h('h2', ['Market ', noteDot(ctx, 'market'), suggestBar(ctx, 'market')]));
   if (ctx.game.round === 1) zone.append(h('p.banner', 'Every team must win one company this round. A co-bid counts.'));
-  if (ctx.game.round === 5 || !view.lots.length) zone.append(h('p.empty', ctx.game.round === 5 ? 'The market is closed. Portfolios are frozen. Make your final choices.' : 'Nothing is for sale this round.'));
+  if (!view.lots.length) zone.append(h('p.empty', 'Nothing is for sale this round.'));
   // co-bid invitations
   for (const inv of ctx.invites) {
     const lot = view.lots.find(l => l.key === inv.lot);

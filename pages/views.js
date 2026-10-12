@@ -66,7 +66,7 @@ export function buildTeamView(state, tid, wins = []) {
   });
   const divest = full.map(u => {
     const sa = saOf(state, state.units[u.id]);
-    return { unit: u.id, sa, market: cfg.SALE_MARKET * sa, list: round >= 2 && round <= 3 ? cfg.LIST_FRACTIONS.map(f => ({ f, price: f * sa })) : [] };
+    return { unit: u.id, sa, market: cfg.SALE_MARKET * sa, list: round >= 2 && round <= cfg.LIST_LAST_ROUND ? cfg.LIST_FRACTIONS.map(f => ({ f, price: f * sa })) : [] };
   });
   const prev = state.snapshots[Math.max(0, round - 1)];
   return {

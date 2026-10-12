@@ -246,7 +246,7 @@ function newsBody() {
 function openingBody() {
   const m = P.market;
   return h('div.pj-opening', [
-    h('p.op-lede', 'Every team starts with two businesses. Bid for your third. Highest price when time runs out wins; teams that win nothing get an automatic build.'),
+    h('p.op-lede', 'Every team starts with two businesses. Bid for your third. Highest price when time runs out wins; teams that win nothing can still bid in round 1, and any team with no new company at the end of round 1 gets a build that arrives in round 3 at 70% strength.'),
     marketBody(),
   ]);
 }

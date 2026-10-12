@@ -364,3 +364,11 @@ button.big { font-size: 22px; padding: 14px 32px; } button.danger { border-color
 .mk-grid.dense.opening .mk-card { padding: 6px 10px; gap: 1px; } .mk-grid.dense.opening .mk-name { font-size: 19px; line-height: 1.12; } .mk-grid.dense.opening .mk-price b { font-size: 38px; } .mk-grid.dense.opening .mk-price span { font-size: 15px; }
 .mk-grid.dense.opening .mk-lead { font-size: 18px; } .mk-grid.dense.opening .mk-hist, .mk-grid.dense.opening .mk-ind { display: none; } .mk-grid.dense.opening .mk-head svg { width: 30px; height: 30px; }
 .pj-opening .op-lede { font-size: 24px; margin: 0 0 4px; } .pj-opening .mk-top { margin-bottom: 4px; } .pj-opening .mk-top h2 { font-size: 28px; } .pj-opening .mk-top span { font-size: 20px; }
+
+/* alliance (co-bid) on a live lot, 2026-10-12 */
+.lot .ally { margin: 8px 0 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; background: var(--panel2); }
+.lot .ally p { margin: 0 0 6px; } .lot .ally.invite { border-color: var(--amber); } .lot .ally.stale { opacity: .6; } .lot .ally.stale button { cursor: not-allowed; }
+.lot .ally.form { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; } .lot .ally.form .maxbid { flex-basis: 100%; margin: 0; }
+.lot .ally.joint { border-color: var(--green); color: var(--green); } .lot .ally-toggle { margin-top: 8px; }
+.lot .ally .allywith, .lot .ally .bidamt { max-width: 100%; }
+p.allyexp { font-size: 14px; color: var(--sub); border-left: 3px solid var(--amber); padding-left: 8px; }
