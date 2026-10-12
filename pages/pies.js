@@ -52,9 +52,13 @@ export class PieBoard {
   draw(e) {
     const ids = this.order, n = ids.length;
     // choose the grid that gives the biggest pies (names and values need about 70px above each pie, the +/- label 40px below)
+    // Steven (2026-10-11): with many teams the circles were too small to see, so 11 to 20 conglomerates sit in 4 rows (5 across at 20),
+    // and the label shrinks to two short lines, which leaves the room to the circle.
+    const compact = n > 10;
     let cols = 1, maxR = 0;
-    for (let c = 1; c <= n; c++) { const r = Math.min(this.W / c / 2, (this.H / Math.ceil(n / c) - 110) / 2); if (r > maxR) { maxR = r; cols = c; } }
-    const rows = Math.ceil(n / cols), cw = this.W / cols, ch = this.H / rows;
+    if (compact) { cols = Math.ceil(n / 4); maxR = Math.min(this.W / cols / 2 - 6, (this.H / 4 - 48) / 2); }
+    else for (let c = 1; c <= n; c++) { const r = Math.min(this.W / c / 2, (this.H / Math.ceil(n / c) - 110) / 2); if (r > maxR) { maxR = r; cols = c; } }
+    const rows = compact ? 4 : Math.ceil(n / cols), cw = this.W / cols, ch = this.H / rows;
     const svg = this.svg; svg.replaceChildren();
     ids.forEach((id, i) => {
       const f = this.from[id], t = this.to[id];
@@ -62,14 +66,14 @@ export class PieBoard {
       const w = {}; let tot = 0;
       for (const k of KEYS) { w[k] = (f.w[k] || 0) + ((t.w[k] || 0) - (f.w[k] || 0)) * e; tot += w[k]; }
       this.cur[id] = { ev, w, delta: t.delta };
-      const cx = (i % cols) * cw + cw / 2, cy = Math.floor(i / cols) * ch + ch / 2 + 10;
+      const cx = (i % cols) * cw + cw / 2, cy = Math.floor(i / cols) * ch + ch / 2 + (compact ? 22 : 10);
       const r = Math.max(14, maxR * Math.sqrt(ev / this.ref));
       const g = s('g', { 'data-pie': id });
       // with many conglomerates the cell is narrow: shrink the name to fit the cell and cut it short if it still does not
       let nm = this.names[id] + (n > 12 && this.bots[id] ? ' (AI)' : ''), fs = 0;
-      if (n > 10) { fs = Math.max(11, Math.min(26, (cw - 8) / (nm.length * 0.56))); const maxCh = Math.floor((cw - 8) / (fs * 0.56)); if (nm.length > maxCh) nm = nm.slice(0, Math.max(3, maxCh - 1)) + '.'; }
-      g.append(s('text', { x: cx, y: cy - r - 40, 'text-anchor': 'middle', class: 'pie-name', ...(fs ? { style: 'font-size:' + fs + 'px' } : {}) }, nm));
-      g.append(s('text', { x: cx, y: cy - r - 8, 'text-anchor': 'middle', class: 'pie-val', ...(fs ? { style: 'font-size:' + Math.max(14, fs + 4) + 'px' } : {}) }, fmtBig(ev)));
+      if (n > 10) { fs = Math.max(11, Math.min(compact ? 20 : 26, (cw - 8) / (nm.length * 0.56))); const maxCh = Math.floor((cw - 8) / (fs * 0.56)); if (nm.length > maxCh) nm = nm.slice(0, Math.max(3, maxCh - 1)) + '.'; }
+      g.append(s('text', { x: cx, y: cy - r - (compact ? 28 : 40), 'text-anchor': 'middle', class: 'pie-name', ...(fs ? { style: 'font-size:' + fs + 'px' } : {}) }, nm));
+      g.append(s('text', { x: cx, y: cy - r - (compact ? 7 : 8), 'text-anchor': 'middle', class: 'pie-val', ...(fs ? { style: 'font-size:' + (compact ? 22 : Math.max(14, fs + 4)) + 'px' } : {}) }, fmtBig(ev)));
       if (this.bots[id] && n <= 12) g.append(s('path', { d: ROBOT, transform: 'translate(' + (cx - this.names[id].length * 7.8 - 28) + ',' + (cy - r - 62) + ') scale(1.5)', fill: '#9aa5b5' }));
       let a0 = -Math.PI / 2;
       for (const k of KEYS) {
@@ -88,7 +92,7 @@ export class PieBoard {
         a0 = a1;
       }
       const d = this.floats[id];
-      if (d && Math.abs(d) >= 0.5) g.append(s('text', { x: cx, y: cy + r + 30, 'text-anchor': 'middle', class: 'pie-delta ' + (d >= 0 ? 'up' : 'down'), ...(n > 10 ? { style: 'font-size:20px' } : {}) }, fmtSigned(d)));
+      if (d && Math.abs(d) >= 0.5 && !compact) g.append(s('text', { x: cx, y: cy + r + 30, 'text-anchor': 'middle', class: 'pie-delta ' + (d >= 0 ? 'up' : 'down'), ...(n > 10 ? { style: 'font-size:20px' } : {}) }, fmtSigned(d)));
       svg.append(g);
     });
   }

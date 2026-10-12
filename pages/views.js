@@ -66,7 +66,7 @@ export function buildTeamView(state, tid, wins = []) {
   });
   const divest = full.map(u => {
     const sa = saOf(state, state.units[u.id]);
-    return { unit: u.id, market: cfg.SALE_MARKET * sa, list: round >= 2 && round <= 3 ? cfg.LIST_FRACTIONS.map(f => ({ f, price: f * sa })) : [] };
+    return { unit: u.id, sa, market: cfg.SALE_MARKET * sa, list: round >= 2 && round <= 3 ? cfg.LIST_FRACTIONS.map(f => ({ f, price: f * sa })) : [] };
   });
   const prev = state.snapshots[Math.max(0, round - 1)];
   return {
@@ -157,7 +157,7 @@ export function buildPublic(state, round, now = Date.now()) {
   let mover = null;
   for (const t of teams) if (prev && (!mover || Math.abs(t.delta) > Math.abs(mover.delta))) mover = t;
   const shock = roundEvents.find(e => e.type === 'shock_resolved');
-  const caption = round === 0 ? 'Round 0: Setup. Every conglomerate starts with two businesses and cash.'
+  const caption = round === 0 ? (state.openingDone ? 'Round 0: Setup. Every conglomerate started with two businesses and cash, then bid for a third in the opening auction.' : 'Round 0: Setup. Every conglomerate starts with two businesses and cash.')
     : 'Round ' + round + ': ' + ROUND_NAMES[round] + '. ' + (shock ? shock.title + ' hit the news. ' : 'No big news. ')
       + (mover ? mover.name + (mover.delta >= 0 ? ' jumped ' : ' fell ') + '$' + Math.round(Math.abs(mover.delta)) + 'M.' : '');
   return {

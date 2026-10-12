@@ -13,6 +13,7 @@ const FIRST = (txt) => txt;
 
 // ---------- grey-out helpers ----------
 function greyTip(ctx, perm) {
+  if (ctx.opening) return 'This opens when the opening auction closes.';
   if (ctx.locked) return 'Your plan is locked. Changes are off.';
   if (ctx.phase === 'market') return perm === 'market' ? 'Only the Head of Deals can bid. Tap Suggest to leave a note.' : 'This opens after the market closes.';
   if (ctx.phase !== 'decide') return 'Decisions open when the clock turns green.';
@@ -40,12 +41,12 @@ export function renderTopBar(ctx) {
   const attLeft = view ? Math.max(0, view.attMax - attentionUsed(ctx.plan, view.liveAuction)) : 3;
   const dots = []; for (let i = 0; i < (view ? view.attMax : 3); i++) dots.push(h('i.adot' + (i < attLeft ? '.on' : '')));
   return h('header.topbar', [
-    h('div.tb-name', [h('b', ctx.teamName), h('span.sub', 'Enterprise value ' + (view ? fmtM(view.ev) : '--'))]),
+    h('div.tb-name', [h('b', ctx.teamName), h('span.sub', [gl('ev'), ' ' + (view ? fmtM(view.ev) : '--')])]),
     h('div.tb-round', [h('b', game.round ? 'Round ' + game.round + ' of 5: ' + roundName : 'Lobby'), h('span.sub', phaseWord)]),
     h('div.tb-timer.' + tcls + (game.clock && game.clock.paused ? '.paused' : ''), [h('b#timer', game.clock ? (game.clock.paused ? 'PAUSED ' : '') + mmss(left) + ' left' : '--:--'), h('span.sub', phaseWord)]),
     h('div.tb-cash', [
       h('div.meterbar', { title: 'Cash plus credit line, with what your plan reserves' }, [h('i.res', { style: 'width:' + resPct + '%' })]),
-      h('span.sub', view ? ['Cash ' + fmtM(cash) + ' plus ' + fmtM(line) + ' credit line, ', gl('reserved'), ' ' + fmtM(m.total) + ', free ' + fmtM(m.free)] : '')]),
+      h('span.sub', view ? ['Cash ' + fmtM(cash) + ' + ', gl('creditline'), ' ' + fmtM(line) + ' (borrowing) = ' + fmtM(total) + ' to use. ', gl('reserved'), ': ' + fmtM(m.total) + '. ', gl('free'), ': ' + fmtM(m.free) + '.'] : '')]),
     h('div.tb-att', [h('div.adots', dots), h('span.sub', [gl('attention'), ': ' + attLeft + ' of ' + (view ? view.attMax : 3) + ' attention left'])]),
     h('div.tb-role', [ROLES_ON ? h('span.badge', { title: role ? role.hint : '' }, role ? role.label : 'No seat') : null, h('span.sub', ctx.seatName + ' (you)')]),
   ]);
@@ -71,7 +72,8 @@ function bizInfo(ctx, u) {
   if (u.hook) kids.push(h('p.hook', u.hook));
   if (news.length) {
     kids.push(h('p.newshead', 'In the news for ' + IND[u.ind].label + ' (' + news.length + '):'));
-    kids.push(h('ul.bznews', news.map(n => h('li', [h('span.chip.' + (n.tag || '').toLowerCase(), n.tag || 'News'), ' ' + n.text, n.hits && n.hits[u.ind] ? h('span.hit', ' If it happens: ' + n.hits[u.ind] + '.') : null]))));
+    kids.push(h('p.sub.grades', 'Source grades: Wire gives the exact chance, Trade press gives a rounded chance, Chatter gives only a rough word. A grade tells you how exact the odds are, not whether the event is more or less likely.'));
+    kids.push(h('ul.bznews', news.map(n => h('li', [h('span.chip.' + (n.tag || '').toLowerCase(), n.tag || 'News'), ' ' + n.text, n.src ? h('span.src', ' (' + n.src + ', ' + (n.gradeWord || '').toLowerCase() + ')') : null, n.hits && n.hits[u.ind] ? h('span.hit', ' If it happens: ' + n.hits[u.ind] + '.') : null]))));
     if (hedgeable.length) kids.push(h('p.sub.cando', 'You can use Protect on this business against: ' + hedgeable.map(hd => hd.title).join(', ') + '.'));
     else kids.push(h('p.sub.cando', 'A capital request below is your main way to prepare for this.'));
   } else kids.push(h('p.sub', 'No headline this round names ' + IND[u.ind].label + '. The business moves with the economy and its own results.'));
@@ -98,12 +100,14 @@ export function renderBusinesses(ctx) {
         blocked ? h('div.why', 'Not enough free cash. You are ' + fmtM(Math.ceil(short)) + ' short.') : null,
       ]);
     };
-    u.requests.forEach((r, i) => opts.push(mk(i, r.name, r.cost * u.w, r.effect + '.')));
-    opts.push(mk(null, 'Hold.', 0, 'Keep spending as it is.'));
+    const KIND = { growth: 'Growth: the business gains about $1.50 of lasting value for each $1 you spend the first time, and less each time after.', defend: 'Defend: adds some value now and, for the next two rounds, halves the damage from bad news while keeping the good news.', lock: 'Lock in: adds some value now and, for the next two rounds, halves both the swings, up and down.' };
+    u.requests.forEach((r, i) => opts.push(mk(i, r.name, r.cost * u.w, r.effect + '. ' + (KIND[r.kind] || ''))));
+    opts.push(mk(null, 'Hold.', 0, 'Keep spending as it is. Nothing is spent and nothing is gained.'));
     zone.append(h('article.card.biz' + (u.stress ? '.stress' : ''), [
       h('div.card-head', [art ? h('img.art', { src: art, alt: '' }) : h('div.arttile', { style: 'border-color:' + IND[u.ind].color }, icon(u.ind, 34)),
         h('div', [h('b', u.name), h('span.tag', { style: 'background:' + IND[u.ind].color }, IND[u.ind].label), u.w < 1 ? h('span.sub', ' (shared, half is yours)') : null])]),
       h('div.valrow', [gl('worth'), ' ' + fmtM(u.value), h('span.' + (u.trend >= 0 ? 'up' : 'down'), ' ' + (u.trend >= 0 ? '▲ ' : '▼ ') + trend)]),
+      (() => { const d = view.divest.find(x => x.unit === u.id); return d && Math.abs(d.sa - u.value) >= 0.5 ? h('p.sub.standalone', 'Stand-alone value ' + fmtM(d.sa) + '. Divest percentages apply to this number.') : null; })(),
       u.stress ? h('p.stressline', 'This business is losing money. A Turnaround may help, if the problem is the business and not the whole industry.') : null,
       bizInfo(ctx, u),
       h('div.opts', opts),
@@ -116,13 +120,30 @@ export function renderBusinesses(ctx) {
 
 // ---------- Corporate actions ----------
 const ACTION_ROWS = [
-  { key: 'integrate', perm: 'ops', title: 'Integrate', gloss: 'integrate', line: 'Make two of your businesses work together. Pays off only if they truly share something.' },
-  { key: 'deepdive', perm: 'ops', title: 'Deep dive', gloss: 'deepdive', line: 'Pay to see the real value of one company, or to learn whether two of your businesses really fit.' },
-  { key: 'turnaround', perm: 'ops', title: 'Turnaround', gloss: 'turnaround', line: 'Step in and fix a struggling business.' },
-  { key: 'devcap', perm: 'ops', title: 'Develop capability', gloss: 'capability', line: 'Invest in getting better at one kind of move. Two good uses earns you a skill.' },
-  { key: 'divest', perm: 'market', title: 'Divest', line: 'Sell a business. Sell it to the market for 85% of its stand-alone value, or list it for other teams at 80%, 100% or 120%.' },
-  { key: 'hedge', perm: 'ops', title: 'Protect', line: 'Pay to cut the damage a risk in the news could do to one business.' },
+  { key: 'integrate', perm: 'ops', title: 'Integrate', gloss: 'integrate', first: true,
+    line: 'Join two of your businesses into one operation. The pair then earns extra every round.',
+    pays: 'Integrate has three outcomes. Pairs that truly share something, like a power supply or customers, earn extra every round (half in the first round). Pairs that share nothing waste the money. Pairs that clash lose value every round, with or without Integrate.',
+    costs: (v) => 'About 3% of the two businesses\' value, at least $10M' + (v.pairs.length ? ' (' + v.pairs.map(x => fmtM(x.cost)).join(' or ') + ' for your pair' + (v.pairs.length > 1 ? 's' : '') + ')' : '') + ', plus 1 attention.' },
+  { key: 'deepdive', perm: 'ops', title: 'Deep dive', gloss: 'deepdive', first: true,
+    line: 'Look closely at one thing. On a pair of your businesses it tells you whether they really fit. On a company for sale it narrows your estimate of its real value.',
+    pays: 'It pays before a big decision: run it on a pair before you Integrate, or on a company before you bid. The answer is shown at once and cannot be taken back.',
+    costs: () => '1 attention and no cash.' },
+  { key: 'turnaround', perm: 'ops', title: 'Turnaround', gloss: 'turnaround',
+    line: 'Step in and fix a business that is losing money.',
+    pays: 'It works only when the problem is the business itself. If the whole industry is down, it does nothing and the money is lost. When it works, the business gains about 12% of its value next round.',
+    costs: () => 'About 4% of the business\'s value, at least $8M, plus 1 attention. One per business every two rounds.' },
+  { key: 'devcap', perm: 'ops', title: 'Develop capability', gloss: 'capability', first: true,
+    line: 'Practice one kind of move to earn a lasting skill. The skills are Acquirer (buy and build better), Integrator, Operator (turnarounds) and Analyst (deep dives).',
+    pays: 'Doing the same kind of move twice earns the skill for the rest of the game, and a Develop capability counts as one of the two. So starting in round 1 pays most. The money is wasted if you never earn the skill.',
+    costs: (v) => fmtM(v.costs.devcap) + ' plus 1 attention.' },
+  { key: 'divest', perm: 'market', title: 'Divest', line: 'Sell a business. You can sell it to the market, or list it for other teams.',
+    pays: 'Sell now: you get 85% of this business\'s stand-alone value, as cash this round. List it: you pick 80%, 100% or 120% of that same stand-alone value; another team may take it next round and you get that full price; if nobody takes it you keep it. Stand-alone value is shown in the picker below. Divest opens in round 2, and listing is open in rounds 2 and 3 only.',
+    costs: () => 'The 15% haircut if you sell to the market, plus 1 attention.' },
+  { key: 'hedge', perm: 'ops', title: 'Protect', line: 'Pay to cut the damage a risk in the news could do to one business.',
+    pays: 'If the risk happens, the hit to that business is cut in half. If it does not, the money is lost. It only appears while a risk is in the news and can still be reached.',
+    costs: () => 'A few percent of that business\'s value (shown when you choose), plus 1 attention.' },
 ];
+const CAP_BENEFIT = { acquirer: 'your bids lose less to the winner\'s curse and builds cost less', integrator: 'Integrate costs 20% less and pays more', operator: 'Turnarounds cost less and pay more', analyst: 'Deep dives are cheaper and sharper' };
 
 // Why an action is not on the table right now, or null when it is (Steven's ask 5). The reason shows on the row so a player always knows why.
 function notRelevant(ctx, key) {
@@ -175,8 +196,8 @@ function pickerFor(ctx, key) {
     const caps = view.capList.filter(c => !view.capabilities[c] && !plan.actions.some(a => a.type === 'devcap' && a.cap === c));
     if (!caps.length) return h('div.picker', 'Nothing left to develop.');
     p.cap = p.cap && caps.includes(p.cap) ? p.cap : caps[0];
-    form.append(select(caps.map(c => [c, view.capLabels[c] + ' (' + view.uses[c] + ' of 2 uses)']), v => { p.cap = v; }, p.cap),
-      h('p.sub', 'Cost ' + fmtM(view.costs.devcap) + '. Counts as one use.'),
+    form.append(select(caps.map(c => [c, view.capLabels[c] + ' (' + view.uses[c] + ' of 2 uses)']), v => { p.cap = v; ctx.rerender(); }, p.cap),
+      h('p.sub', 'Cost ' + fmtM(view.costs.devcap) + '. Counts as one use. Once you have two uses of ' + view.capLabels[p.cap] + ', ' + CAP_BENEFIT[p.cap] + '.'),
       h('button.go', { type: 'button', onclick: () => add({ type: 'devcap', cap: p.cap }) }, 'Add Develop capability'), cancel);
   } else if (key === 'deepdive') {
     const opts = [];
@@ -192,16 +213,16 @@ function pickerFor(ctx, key) {
     if (!us.length) return h('div.picker', 'No business to sell.');
     p.unit = p.unit && us.some(d => d.unit === p.unit) ? p.unit : us[0].unit;
     const cur = us.find(d => d.unit === p.unit), nm = id => view.units.find(u => u.id === id).name;
-    const modes = [['market', 'Sell to the market for ' + fmtM(cur.market)], ...cur.list.map(l => ['list:' + l.f, 'List for other teams at ' + Math.round(l.f * 100) + '% (' + fmtM(l.price) + ')'])];
+    const modes = [['market', 'Sell to the market for ' + fmtM(cur.market) + ' (85% of stand-alone value, cash this round)'], ...cur.list.map(l => ['list:' + l.f, 'List for other teams at ' + Math.round(l.f * 100) + '% of stand-alone value (' + fmtM(l.price) + '), shown next round, you keep it until someone takes it'])];
     p.mode = p.mode && modes.some(m => m[0] === p.mode) ? p.mode : 'market';
-    form.append(select(us.map(d => [d.unit, nm(d.unit)]), v => { p.unit = v; ctx.rerender(); }, cur.unit), select(modes, v => { p.mode = v; }, p.mode),
+    form.append(select(us.map(d => [d.unit, nm(d.unit)]), v => { p.unit = v; ctx.rerender(); }, cur.unit), h('p.sub', 'Stand-alone value ' + fmtM(cur.sa) + '. 85% = ' + fmtM(cur.market) + '.' + (cur.list.length ? '' : ' Listing is open in rounds 2 and 3 only, so it is not offered this round.')), select(modes, v => { p.mode = v; }, p.mode),
       h('button.go', { type: 'button', onclick: () => add(p.mode === 'market' ? { type: 'divest', unit: cur.unit, mode: 'market' } : { type: 'divest', unit: cur.unit, mode: 'list', f: Number(p.mode.split(':')[1]) }) }, 'Add Divest'), cancel);
   } else if (key === 'hedge') {
     if (!view.hedges.length) return h('div.picker', 'No risk in the news can be protected against right now.');
     const opts = [];
     for (const hd of view.hedges) for (const u of hd.units) opts.push([hd.chain + '|' + u.unit, hd.title + ': protect ' + view.units.find(x => x.id === u.unit).name + ' (' + fmtM(u.cost) + ')']);
     p.hg = p.hg || opts[0][0];
-    form.append(select(opts, v => { p.hg = v; }, p.hg), h('p.sub', 'Cuts the damage if the risk happens. If it does not happen, the money is lost.'),
+    form.append(select(opts, v => { p.hg = v; }, p.hg), h('p.sub', 'If the risk happens, the hit to that business is cut in half (a loss shrinks, a gain is untouched). If it does not happen, the money is lost.'),
       h('button.go', { type: 'button', onclick: () => { const [c, u] = p.hg.split('|'); add({ type: 'hedge', chain: c, unit: u }); } }, 'Add Protect'), cancel);
   }
   return form;
@@ -212,13 +233,18 @@ export function renderActions(ctx) {
   const anyOk = ctx.editable('ops') || ctx.editable('market');
   const zone = h('section.zone.zone-act' + (anyOk ? '' : '.grey'), { dataset: { zone: 'act' } });
   zone.append(h('h2', ['Corporate actions ', noteDot(ctx, 'ops'), suggestBar(ctx, 'ops')]));
-  zone.append(h('p.sub', 'Pick up to 3. Each costs 1 attention (' + Math.max(0, view.attMax - used) + ' left).' + (view.liveAuction ? ' Bids do not count; cash limits them.' : ' Bids and builds count too.')));
+  zone.append(h('p.sub', 'You can do up to 3 corporate actions each round. Each uses 1 of your 3 attention points (' + Math.max(0, view.attMax - used) + ' left), including a Deep dive on a company for sale. Attention resets next round and cannot be saved.' + (view.liveAuction ? ' Bids do not use attention; cash limits them.' : ' Bids and builds use attention too.')));
+  if (ctx.game.round === 5) zone.append(h('p.sub.notnow', 'Round 5: no companies are for sale and no builds can start, so your portfolio is fixed. You can still choose capital requests and corporate actions.'));
+  else if (ctx.game.round >= 4) zone.append(h('p.sub.notnow', 'Listing a business for other teams is no longer available after round 3. You can still sell to the market.'));
   if (full) zone.append(h('p.warnline', 'You have used all ' + view.attMax + ' attention points.'));
   for (const r of ACTION_ROWS) {
     const ok = ctx.editable(r.perm), open = ctx.ui.picker && ctx.ui.picker.key === r.key, irrelevant = notRelevant(ctx, r.key), here = irrelevant ? '' : whyHere(ctx, r.key);
     const row = h('div.arow' + (ok && !full && !irrelevant ? '' : '.dim'), { title: ok ? '' : greyTip(ctx, r.perm) }, [
       h('div.arow-main', [h('b', r.gloss ? gl(r.gloss, r.title) : r.title), h('span.cost', '1 attention')]),
       h('p.sub', r.line),
+      h('p.sub.pays', [h('b', 'When it pays: '), r.pays]),
+      h('p.sub.costs', [h('b', 'Cost: '), r.costs(view)]),
+      ctx.game.round === 1 && r.first && !irrelevant ? h('p.sub.first', 'A natural first move in round 1' + (r.key === 'integrate' ? ' if a Deep dive says the pair fits.' : r.key === 'devcap' ? ': it takes two uses to earn a skill.' : '.')) : null,
       irrelevant ? h('p.sub.notnow', 'Not on the table now: ' + irrelevant) : (here ? h('p.sub.here', here) : null),
       h('button.add', { type: 'button', disabled: !ok || full || ctx.locked || !!irrelevant, onclick: () => { ctx.ui.picker = open ? null : { key: r.key }; ctx.rerender(); } }, open ? 'Close' : 'Choose'),
     ]);
@@ -294,7 +320,7 @@ export function renderMarket(ctx) {
         buttons.push(h('button', { type: 'button', disabled: !ok || !!bid || !view.teams.filter(t => t.id !== view.teamId).length, onclick: () => { ui.open = { key: l.key, mode: 'co' }; ui.bidform = { amount: '' }; ctx.rerender(); } }, 'Co-bid'));
         if (l.buildCost !== null) buttons.push(h('button', { type: 'button', title: 'Build your own for ' + fmtM(l.buildCost) + '. It opens in two rounds at 70% strength.', disabled: !ok || !!build, onclick: () => ctx.write({ market: { bids: plan.bids, builds: [...plan.builds, { lot: l.key }] } }) }, 'Build ' + fmtM(l.buildCost)));
       }
-      if (!l.deep) buttons.push(h('button', { type: 'button', title: 'Spend 1 attention to see this company\'s real value band.', disabled: !ok || plan.actions.some(a => a.lot === l.key) || attentionUsed(plan, view.liveAuction) >= view.attMax, onclick: () => ctx.write({ actions: [...plan.actions, { type: 'deepdive', lot: l.key }] }) }, 'Deep dive'));
+      if (!l.deep) buttons.push(h('button', { type: 'button', title: 'Spend 1 attention to narrow the estimate range for this company. The answer is final.', disabled: !ok || plan.actions.some(a => a.lot === l.key) || attentionUsed(plan, view.liveAuction) >= view.attMax, onclick: () => ctx.write({ actions: [...plan.actions, { type: 'deepdive', lot: l.key }] }) }, 'Deep dive'));
       buttons.push(h('button.ghost', { type: 'button', onclick: () => { (ui.skipped = ui.skipped || {})[l.key] = true; ctx.rerender(); } }, 'Skip'));
     }
     const placed = [];
@@ -334,8 +360,8 @@ export function renderLock(ctx) {
       h('label', ['What will your whole company be worth at the end of this round? $', h('input.pred', { type: 'number', min: 0, step: 10, value: predicted === null || predicted === undefined ? '' : predicted, disabled: !canLock, oninput: e => ctx.write({ predicted: e.target.value === '' ? null : Number(e.target.value) }, true) }), 'M']),
     ] : []),
     canLock
-      ? [h('button.lockbtn', { type: 'button', disabled: !!reason || (ctx.phase !== 'decide' && ctx.phase !== 'market'), onclick: () => ctx.lock() }, 'Lock in our plan'), h('span.reason', reason || (row.engine_error ? '' : 'Ready to lock.'))]
-      : [h('p.sub', can(ctx.role, 'lock') ? 'You lock the plan when decisions open.' : 'Only the CEO can lock. Waiting for ' + ctx.ceoName + '.'), suggestBar(ctx, 'lock')],
+      ? [h('p.sub.lockexp', 'Locking is optional. If you do not lock, your last saved plan is used, along with the companies you lead. Any part of the plan you cannot afford is dropped, and anything left blank counts as Hold. Locking shows the other teams you are done.'), h('button.lockbtn', { type: 'button', disabled: !!reason || (ctx.phase !== 'decide' && ctx.phase !== 'market'), onclick: () => ctx.lock() }, 'Lock in our plan'), h('span.reason', reason || (row.engine_error ? '' : 'Ready to lock.'))]
+      : [h('p.sub', ctx.opening ? 'The lock opens when the opening auction closes.' : can(ctx.role, 'lock') ? 'You lock the plan when decisions open.' : 'Only the CEO can lock. Waiting for ' + ctx.ceoName + '.'), suggestBar(ctx, 'lock')],
     row.engine_error ? h('p.warnline', row.engine_error) : null,
     ctx.savedAt ? h('span.sub.saved', 'Saved ' + ctx.savedAt) : null,
   ];

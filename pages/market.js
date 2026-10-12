@@ -35,6 +35,7 @@ export function openMarket(state) {
   }
   const bots = {};
   for (const id of state.botIds) {
+    if ((state.openingWinners || []).includes(id)) { bots[id] = { targets: [] }; continue; }   // an AI seat that won in the starting auction sits out the rest of round 1
     const dec = botDecide(state, id);
     const targets = (dec.bids || []).filter(b => lots[b.lot] && b.amount > 0).map(b => ({ lot: b.lot, max: b.amount }))
       .sort((a, b) => b.max / lots[b.lot].catalog - a.max / lots[a.lot].catalog || (a.lot < b.lot ? -1 : 1));
@@ -48,6 +49,25 @@ export function ledBy(m, tid) { return m.order.map(k => m.lots[k]).filter(l => l
 export function committedBy(m, state, tid, exceptLot) {
   const fee = 1 + feeRate(state, tid);
   return ledBy(m, tid).filter(l => l.key !== exceptLot).reduce((s, l) => s + l.price * fee, 0);
+}
+
+// The cash rule behind placeBid, in one place so the team page can show the same limit the market enforces (2026-10-12).
+// The team must also be able to pay the end-of-round obligations (complexity cost of the portfolio it would then hold, interest on
+// its credit line) from what is left, or the game would force it to sell a business, possibly the one it is bidding for.
+export function affordParts(m, state, tid, lotKey, amount, rest = 0) {
+  const fee = 1 + feeRate(state, tid), have = committedBy(m, state, tid, lotKey), budget = budgetOf(state, tid);
+  const bids = ledBy(m, tid).filter(l => l.key !== lotKey).map(l => ({ lot: l.key, amount: l.price })).concat([{ lot: lotKey, amount }]);
+  const obl = obligations(state, tid, { bids }).total, after = have + amount * fee + rest + obl;
+  return { fee, have, budget, obl, after };
+}
+function cantAffordText(budget, have, thisBid, rest, obl, after) {
+  return 'You cannot safely afford this bid. Your cash plus credit line is $' + Math.round(budget) + 'M. Your winning bids come to $' + Math.round(have) + 'M, this bid adds $' + Math.round(thisBid) + 'M' + (rest ? ', build orders take $' + Math.round(rest) + 'M' : '') + ', and about $' + Math.round(obl) + 'M must be paid at the end of the round for interest and the cost of running your businesses. That is $' + Math.ceil(after - budget * CUSHION) + 'M too much, and the game would have to sell one of your businesses.';
+}
+// The largest bid on this lot the cash rule accepts right now, before build orders (pass them as `rest` to take them off). The end-of-round
+// obligations do not depend on the bid amount (they use the listed value of the lot), so the limit is a straight subtraction. Not rounded.
+export function affordLimit(m, state, tid, lotKey, rest = 0) {
+  const p = affordParts(m, state, tid, lotKey, 0, rest);
+  return (p.budget * CUSHION - p.have - rest - p.obl) / p.fee;
 }
 
 // Try one bid. `rest` is the cash the team has set aside for other things (build orders). Returns {ok, reason}.
@@ -69,13 +89,9 @@ export function placeBid(m, state, tid, lotKey, amount, rest = 0, now = Date.now
     if (amount > lot.catalog * MAX_MULT) return { ok: false, reason: 'That is more than three times the listed value. Check the number.' };
   }
   {   // the AI seats are held to the same cash rule, otherwise they would lead at a price the engine cannot charge them
-    const fee = 1 + feeRate(state, tid), have = committedBy(m, state, tid, lotKey), budget = budgetOf(state, tid);
-    // The team must also be able to pay the end-of-round obligations (complexity cost of the portfolio it would then hold, interest on
-    // its credit line) from what is left, or the game would force it to sell a business, possibly the one it is bidding for.
-    const bids = ledBy(m, tid).filter(l => l.key !== lotKey).map(l => ({ lot: l.key, amount: l.price })).concat([{ lot: lotKey, amount }]);
-    const obl = obligations(state, tid, { bids }).total, after = have + amount * fee + rest + obl;
+    const { fee, have, budget, obl, after } = affordParts(m, state, tid, lotKey, amount, rest);
     if (after > budget * CUSHION + 1e-9) {
-      return { ok: false, reason: 'You cannot safely afford this bid. Your cash plus credit line is $' + Math.round(budget) + 'M. Your winning bids come to $' + Math.round(have) + 'M, this bid adds $' + Math.round(amount * fee) + 'M' + (rest ? ', build orders take $' + Math.round(rest) + 'M' : '') + ', and about $' + Math.round(obl) + 'M must be paid at the end of the round for interest and the cost of running your businesses. That is $' + Math.ceil(after - budget * CUSHION) + 'M too much, and the game would have to sell one of your businesses.' };
+      return { ok: false, reason: cantAffordText(budget, have, amount * fee, rest, obl, after) };
     }
   }
   lot.price = amount; lot.bids++;
@@ -123,6 +139,8 @@ export function marketSnapshot(m, state) {
   return {
     round: m.round, open: m.open, seen: m.seen, acks: m.acks,
     obl: Object.fromEntries(state.teamIds.map(id => [id, Math.round(obligations(state, id, { bids: ledBy(m, id).map(l => ({ lot: l.key, amount: l.price })) }).total * 10) / 10])),
+    // The most each team may bid on each lot under the cash rule (before its build orders), so the team page can show it. Whole dollars, rounded down.
+    cap: Object.fromEntries(state.teamIds.map(id => [id, Object.fromEntries(m.order.filter(k => !(m.lots[k].high && m.lots[k].high.team === id) && m.lots[k].seller !== id).map(k => [k, Math.floor(affordLimit(m, state, id, k) * 100) / 100]))])),
     lots: m.order.map(k => {
       const l = m.lots[k];
       return {

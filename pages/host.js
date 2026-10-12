@@ -4,7 +4,7 @@
 // The engine is deterministic, so the whole game can be rebuilt from seed + team count + bot count + the stored plans
 // (rebuild()). That is how an admin reload, or a second admin laptop, picks the game up where it was.
 
-import { createGame, openRound, submitDecisions, validateDecisions, resolveRound } from '../engine/engine.js';
+import { createGame, openRound, submitDecisions, validateDecisions, resolveRound, clearOpeningAuction } from '../engine/engine.js';
 import { applyDeepDives } from '../engine/core.js';
 import { estimate } from '../engine/model.js';
 import { buildTeamView, buildPublic, buildResult, buildFinal, exportLog } from './views.js';
@@ -12,10 +12,12 @@ import { planFromRow, attentionUsed } from './roles.js';
 import { makeCode, makeGameId } from './util.js';
 import { buildCostOf, feeRate, budgetOf, obligations } from '../engine/model.js';
 import { chainById } from '../engine/engine.js';
+import { hash01 } from '../engine/rng.js';
 import { MARKET_SECONDS, SNIPE_MS, openMarket, restoreMarket, placeBid, botTick as marketBotTick, closeMarket, marketSnapshot } from './market.js';
 
 export const RESULT_STEP_SECONDS = 9;   // auto-advance only: how long each results reveal stays up
 export const DECIDE_SECONDS = { 1: 360, 2: 360, 3: 360, 4: 480, 5: 300 };
+export const OPENING_SECONDS = 240;   // the starting auction: only the auction is open, then round 1 opens with the lots nobody won on the side
 export const DEFAULT_NAMES = ['Alpine Holdings', 'Frontier Capital', 'Summit Partners', 'Rangeview Group', 'Bitterroot Capital', 'Sawtooth Holdings', 'Teton Ventures', 'Wasatch Partners', 'Sagebrush Capital', 'Bighorn Group'];
 
 export function newGameRow({ seed, teams, bots }, opts = {}) {
@@ -23,7 +25,7 @@ export function newGameRow({ seed, teams, bots }, opts = {}) {
   return {
     id, seed: seed || Math.floor(10000 + Math.random() * 89999), team_count: teams, bot_count: bots, phase: 'lobby', round: 0,
     clock: null, reveal: null, rev: 0, status: 'active', admin_key: makeCode(8),
-    settings: { autoResolve: true, liveAuction: opts.liveAuction !== false, requireWhy: opts.requireWhy === true, autoAdvance: false },
+    settings: { autoResolve: true, liveAuction: opts.liveAuction !== false, requireWhy: opts.requireWhy === true, autoAdvance: true, openingAuction: opts.liveAuction !== false && opts.openingAuction !== false },
   };
 }
 
@@ -37,15 +39,42 @@ function effectWords(x) {
   return out.join(', ');
 }
 
+// ---- who is reporting (Steven, 2026-10-11: small differences in the chyron that reward close reading) ----
+// Every headline carries a source. Grade A (wire services) prints the exact odds, grade B (trade press) rounds them to the nearest 10
+// and says "about", grade C (chatter) gives only a word for the odds. The odds are never changed, only how finely they are printed, so
+// a reader who tracks the sources loses nothing by it and one who skims has less to go on. Chain headlines also say when the effect
+// would land, how long it would last and the biggest swing it could cause. None of this says whether the event happens.
+const SOURCES = {
+  A: ['Plains Wire Service', 'Mountain West Press', 'Federal Data Desk', 'Exchange Newswire'],
+  B: ['Western Trade Journal', 'Intermountain Business Daily', 'Ag and Energy Weekly', 'Resort and Retail Review'],
+  C: ['Overheard at the diner', 'A blogger who is sometimes right', 'Unsigned market note', 'Chat board tip'],
+};
+const GRADE_WORD = { A: 'Wire', B: 'Trade press', C: 'Chatter' };
+function oddsWords(p) { return p >= 0.7 ? 'A strong chance' : p >= 0.55 ? 'A better-than-even chance' : p > 0.45 ? 'An even chance' : p > 0.3 ? 'A less-than-even chance' : 'A slim chance'; }
+export function degradeOdds(text, grade) {
+  const m = /(\d+)% chance/.exec(text);
+  if (!m || grade === 'A') return text;
+  const p = Number(m[1]) / 100;
+  return text.replace(m[0], grade === 'B' ? 'About ' + (Math.round(p * 10) * 10) + '% chance' : oddsWords(p));
+}
+const biggestSwing = eff => {
+  let best = null;
+  for (const [ind, x] of Object.entries(eff)) for (const k of ['d', 'p', 'c', 'v']) if (x[k]) { const mag = Math.abs(x[k] - 1); if (!best || mag > best.mag) best = { ind, mag, words: effectWords({ [k]: x[k] }) }; }
+  return best ? { ind: best.ind, words: best.words } : null;
+};
+
 export class Host {
   constructor(store, gameId) { this.store = store; this.gid = gameId; this.state = null; this.game = null; this.queue = Promise.resolve(); this.sentSeq = 0; this.checked = {}; this.committed = {}; this.market = null; this.winBids = {}; }
   get live() { return !!(this.game && this.game.settings && this.game.settings.liveAuction); }
+  // The starting auction (Steven, 2026-10-11): the game opens with an auction for each team's third company, then round 1 runs with the unsold lots on the side.
+  get openingOn() { return this.live && !!(this.game && this.game.settings && this.game.settings.openingAuction); }
+  get inOpening() { return !!(this.game && this.game.phase === 'market' && this.game.reveal && this.game.reveal.opening); }
 
   // Run one thing at a time, so realtime callbacks and button clicks never overlap.
   run(fn) { const p = this.queue.then(fn); this.queue = p.catch(e => console.error(e)); return p; }
 
-  async createNew({ seed, teams = 20, bots = 0, liveAuction = true, requireWhy = false }) {
-    const row = newGameRow({ seed, teams, bots }, { liveAuction, requireWhy });
+  async createNew({ seed, teams = 20, bots = 0, liveAuction = true, requireWhy = false, openingAuction = true }) {
+    const row = newGameRow({ seed, teams, bots }, { liveAuction, requireWhy, openingAuction });
     const used = new Set();
     await this.store.createGame(row);
     this.gid = row.id;
@@ -78,6 +107,10 @@ export class Host {
     this.committed = {}; this.market = null;
     for (let r = 1; r <= g.round; r++) {
       openRound(this.state, r);
+      if (r === 1 && this.openingOn && !(g.round === 1 && this.inOpening)) {   // the starting auction already closed: apply its stored result
+        const m0 = mks[0];
+        if (m0 && m0.final) clearOpeningAuction(this.state, { humanBids: m0.final.humanBids || {}, botBids: m0.final.botBids || {} });
+      }
       const done = r < g.round || g.phase === 'results' || g.phase === 'final';
       const rows = decs.filter(d => d.round === r);
       if (this.live) {
@@ -194,10 +227,19 @@ export class Host {
   }
   // Each headline also says which industries it could move and how, so a team page can show the news that matters to each business.
   newsItems() {
-    return this.state.events.filter(e => e.round === this.state.round && e.type === 'ticker').map(e => {
+    const st = this.state;
+    return st.events.filter(e => e.round === st.round && e.type === 'ticker').map((e, i) => {
       const eff = e.chain && chainById[e.chain] ? chainById[e.chain].stage3.effects : null;
-      const item = { tag: e.tag, text: e.text, stage: e.stage, ts: Date.now() };
-      if (eff) { item.chain = e.chain; item.inds = Object.keys(eff); item.hits = Object.fromEntries(Object.entries(eff).map(([ind, x]) => [ind, effectWords(x)])); }
+      // the source and its grade are keyed draws, so a reload shows the same ones; a stage 2 report is more often a wire story, chatter is mostly noise
+      const u = hash01(st.seed, 'news_src', st.round, i, e.chain || e.tag), w = e.stage === 2 ? [0.6, 0.9] : e.stage === 1 ? [0.3, 0.75] : [0.1, 0.35];
+      const grade = u < w[0] ? 'A' : u < w[1] ? 'B' : 'C', pool = SOURCES[grade];
+      const item = { tag: e.tag, text: degradeOdds(e.text, grade), stage: e.stage, grade, gradeWord: GRADE_WORD[grade], src: pool[Math.floor(hash01(st.seed, 'news_srcname', st.round, i, e.chain || e.tag) * pool.length)], ts: Date.now() };
+      if (eff) {
+        item.chain = e.chain; item.inds = Object.keys(eff); item.hits = Object.fromEntries(Object.entries(eff).map(([ind, x]) => [ind, effectWords(x)]));
+        const sc = st.schedule.chains.find(c => c.id === e.chain);
+        if (sc) { item.from = sc.activeFrom; item.to = Math.min(5, sc.activeTo); item.late = sc.activeFrom > 5; }
+        item.swing = biggestSwing(eff);
+      }
       return item;
     });
   }
@@ -242,7 +284,10 @@ export class Host {
   // the corporate actions and the lock are all open at once and stay open until the instructor closes the round.
   async _openPlay(round) {
     this.winBids = {};
-    if (this.hasMarket()) {
+    if (round === 1 && this.openingOn && !this.state.openingDone && this.state.lots.length) {
+      this.market = openMarket(this.state);
+      await this.publishMarket({ phase: 'market', round, reveal: { opening: true }, clock: this.clockFor(OPENING_SECONDS) });
+    } else if (this.hasMarket()) {
       this.market = openMarket(this.state);
       await this.publishMarket({ phase: 'market', round, reveal: null, clock: this.clockFor((MARKET_SECONDS[round] || 0) + (DECIDE_SECONDS[round] || 0)) });
     } else await this.bumpRev({ phase: 'decide', round, reveal: null, clock: this.clockFor(DECIDE_SECONDS[round]) });
@@ -296,6 +341,48 @@ export class Host {
       if (moves.length) await this.publishMarket();
       return moves;
     });
+  }
+  // Close the starting auction: the winners' prices clear at once (they own the company from here), the lots nobody won open as the
+  // round-1 market, and every other control (capital requests, corporate actions, the lock) opens with it.
+  closeOpeningNow() {
+    return this.run(async () => {
+      if (!this.inOpening || !this.market) return;
+      await this._closeOpening();
+    });
+  }
+  async _closeOpening() {
+    const m = this.market, out = closeMarket(m), snap0 = marketSnapshot(m, this.state);
+    snap0.final = { results: out.results, botBids: out.botBids, humanBids: out.humanBids };
+    await this.store.putSnapshot(this.gid, 0, 'market', '', snap0);
+    clearOpeningAuction(this.state, { humanBids: out.humanBids, botBids: out.botBids });
+    const rows = await this.store.getDecisions(this.gid, 1);
+    for (const tid of this.state.teamIds) {
+      const row = rows.find(x => x.team_id === tid), prev = (row && row.market) || {};
+      let builds = prev.builds || [], note = null;
+      // a build ordered on a company somebody just won is no longer possible (the lot is gone), so it is dropped
+      const gone = builds.filter(b => !this.state.lotsByKey[b.lot]);
+      if (gone.length) { builds = builds.filter(b => this.state.lotsByKey[b.lot]); note = 'A company you had ordered a build of was won by another team in the opening auction, so that build order was dropped.'; }
+      // a build ordered during the auction is kept only if the team can still pay for it after what it won
+      if (builds.length && this._restFor(tid, { market: { builds } }) + obligations(this.state, tid, { bids: [] }).total > budgetOf(this.state, tid) + 1e-9) { builds = []; note = 'Your build order was cancelled because your winning bids in the opening auction already use your cash.'; }
+      // a Deep dive on a lot that has just been sold has done its job (the reading was shown); drop it from the plan and give the attention back
+      const stale = a => a.type === 'deepdive' && a.lot && !this.state.lotsByKey[a.lot];
+      const list = this.committed['1|' + tid] || {};
+      for (const [k, a] of Object.entries(list)) if (stale(a)) delete list[k];
+      const actions = planFromRow(row).actions.filter(a => !stale(a));
+      await this.store.patchDecision(this.gid, tid, 1, { market: { bids: [], builds, live: {}, closed: false }, actions, ...(note ? { engine_error: note } : {}) });
+    }
+    this.winBids = {};
+    this.openingResults = out.results;
+    await this.store.putSnapshot(this.gid, 0, 'public', '', buildPublic(this.state, 0));
+    await this.publishViews();
+    await this.publishEvents();
+    if (this.hasMarket()) {
+      this.market = openMarket(this.state);
+      await this.publishMarket({ phase: 'market', reveal: null, clock: this.clockFor((MARKET_SECONDS[2] || 0) + (DECIDE_SECONDS[1] || 0)) });
+    } else {
+      this.market = null;
+      await this.bumpRev({ phase: 'decide', reveal: null, clock: this.clockFor(DECIDE_SECONDS[1]) });
+    }
   }
   // Close the market: winners' final prices become ordinary bids on their plan, the bots get theirs, and the decide phase opens.
   closeMarketNow() {
@@ -360,7 +447,7 @@ export class Host {
     const p = this.game.phase, r = this.game.round;
     if (p === 'lobby') return 'Start game';
     if (p === 'news') return this.hasMarket() ? 'Open the market' : 'Open decisions';
-    if (p === 'market') return 'Close the round';
+    if (p === 'market') return this.inOpening ? 'Close the opening auction' : 'Close the round';
     if (p === 'decide') return 'Work out the round';
     if (p === 'results') return revealLabel ? 'Reveal: ' + revealLabel : r >= 5 ? 'Show final standings' : 'Start round ' + (r + 1);
     return null;
@@ -370,6 +457,7 @@ export class Host {
     const p = this.game.phase;
     if (p === 'lobby') return this.startGame();
     if (p === 'news') return this.hasMarket() ? this.toMarket() : this.toDecide();
+    if (p === 'market' && this.inOpening) return this.closeOpeningNow();   // the starting auction: one press closes it and opens round 1 proper
     if (p === 'market') return this.closeMarketNow().then(() => this.resolveNow());   // one press closes the market and works out the round
     if (p === 'decide') return this.resolveNow();
     if (p === 'results') {
@@ -384,6 +472,7 @@ export class Host {
     return this.run(async () => {
       let p = this.game.phase;
       if (p === 'final' || p === 'lobby') return;
+      if (p === 'market' && this.inOpening) { await this._closeOpening(); p = this.game.phase; }
       if (p === 'market') { await this._closeMarket(); p = 'decide'; await this.bumpRev({ phase: 'decide' }); }
       if (p === 'news' || p === 'decide') {
         const r = this.state.round, rows = await this.store.getDecisions(this.gid, r);

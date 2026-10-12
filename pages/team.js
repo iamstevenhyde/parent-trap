@@ -118,6 +118,9 @@ async function refresh() {
     const myTeam = me.team_id;
     if (g.round > 0) { const v = await st.getSnapshots(S.gid, { kind: 'view', round: g.round, teamId: myTeam }); S.view = v[0] ? v[0].data : null; }
     if (g.round > 0 && S.view && S.view.liveAuction) { const mk = await st.getSnapshots(S.gid, { kind: 'market', round: g.round }); S.market = mk[0] ? mk[0].data : null; } else S.market = null;
+    // the starting auction's stored result (round 0), so round 1 can say what this team won in it
+    S.opening0 = null;
+    if (g.round === 1 && (g.settings || {}).openingAuction && !(g.reveal && g.reveal.opening)) { const o = await st.getSnapshots(S.gid, { kind: 'market', round: 0 }); S.opening0 = o[0] ? o[0].data : null; }
     const rs = await st.getSnapshots(S.gid, { kind: 'result', teamId: myTeam });
     S.results = Object.fromEntries(rs.map(x => [x.round, x.data]));
     if (g.phase === 'final') { const f = await st.getSnapshots(S.gid, { kind: 'final' }); S.final = f[0] ? f[0].data : null; }
@@ -184,11 +187,13 @@ function buildCtx() {
       invites.push({ lot: b.lot, from: d.team_id, fromName: (S.teams.find(t => t.team_id === d.team_id) || {}).name || d.team_id });
     }
   }
+  const opening = g.phase === 'market' && !!(g.reveal && g.reveal.opening);   // the starting auction: only the auction is open
+  const o0 = S.opening0 && S.opening0.final ? S.opening0.final.results.filter(r => r.winner === S.seat.team_id).map(r => ({ name: r.name, price: r.price })) : null;
   const ctx = {
-    game: g, view, row, plan, role, locked, phase: g.phase, ui: S.ui, teamName: (S.teams.find(t => t.team_id === S.seat.team_id) || {}).name || '', seatName: S.seat.name,
+    opening, openingResult: o0, game: g, view, row, plan, role, locked, phase: g.phase, ui: S.ui, teamName: (S.teams.find(t => t.team_id === S.seat.team_id) || {}).name || '', seatName: S.seat.name,
     clockLeft: clockLeft(), seats: S.seats, invites, ceoName: ceo ? ceo.name : 'the CEO', savedAt: S.savedAt,
     lockedCount: S.decisions.filter(d => d.locked).length, seatedTeams,
-    editable: perm => !locked && can(role, perm) && !S.offline && (g.phase === 'decide' || g.phase === 'market'),
+    editable: perm => !locked && can(role, perm) && !S.offline && (g.phase === 'decide' || g.phase === 'market') && (!opening || perm === 'market'),
     notesFor: perm => (row.notes || []).filter(n => n.perm === perm),
     write, lock, rerender: () => render(), toast,
     suggest: perm => { const t = prompt('One line for the ' + perm + ' owner:'); if (t) write({ notes: [...(row.notes || []), { perm, from: S.seat.name, text: t, ts: Date.now() }] }); },
@@ -207,13 +212,13 @@ function buildCtx() {
   } else ctx.led = [];
   const wins = plan.bids.length;
   const jobName = perm => { const m = mates.find(x => can(roleFor(S.seats, x, g.round), perm)); return m ? m.name : ''; };
-  ctx.flow = flowFor({ names: { deals: jobName('market'), ceo: jobName('lock'), cfo: jobName('capital'), ops: jobName('ops') }, phase: g.phase, round: g.round, live: ctx.live, hasMarket: ctx.hasMarket, role, locked, ledCount: ctx.led.length, wonCount: wins, lockedCount: ctx.lockedCount, seatedTeams, requireWhy: ctx.requireWhy });
+  ctx.flow = flowFor({ opening, names: { deals: jobName('market'), ceo: jobName('lock'), cfo: jobName('capital'), ops: jobName('ops') }, phase: g.phase, round: g.round, live: ctx.live, hasMarket: ctx.hasMarket, role, locked, ledCount: ctx.led.length, wonCount: wins, lockedCount: ctx.lockedCount, seatedTeams, requireWhy: ctx.requireWhy });
   return ctx;
 }
 function updateLockUI() {
   if (!S.view || !S.game) return;
   const ctx = buildCtx(), btn = $('.lockbtn'), rs = $('.reason');
-  if (btn) { const r = lockReason(ctx.view, ctx.plan, ctx.row.why, ctx.row.predicted, ctx.game.round, { requireWhy: ctx.requireWhy }); btn.disabled = !!r || (ctx.phase !== 'decide' && ctx.phase !== 'market'); if (rs) rs.textContent = r || 'Ready to lock.'; }
+  if (btn) { const r = lockReason(ctx.view, ctx.plan, ctx.row.why, ctx.row.predicted, ctx.game.round, { requireWhy: ctx.requireWhy }); btn.disabled = !!r || ctx.opening || (ctx.phase !== 'decide' && ctx.phase !== 'market'); if (rs) rs.textContent = r || 'Ready to lock.'; }
   const sv = $('.saved'); if (sv && S.savedAt) sv.textContent = 'Saved ' + S.savedAt;
 }
 
@@ -255,6 +260,7 @@ function render() {
     app.replaceChildren(root); return;
   }
   root.append(renderTopBar(ctx), renderSteps(ctx));
+  if (ctx.opening) root.append(h('p.banner.opening', 'Opening auction. Every team bids for its third company now, before round 1 begins. Your capital requests, corporate actions and the lock open when the auction closes. A Deep dive on a company for sale works now. There are two prizes at the end: Biggest parent for the highest enterprise value, and Best parent for the most value added over what the businesses would be worth on their own.'));
   if (ctx.live && ['news', 'market', 'decide'].includes(g.phase) && ctx.view.obl && ctx.view.obl.total > ctx.view.budget + 1e-9) root.append(h('p.banner.insolvent', 'Warning: about ' + fmtM(Math.ceil(ctx.view.obl.total)) + ' of interest and running costs come due at the end of this round, and your cash plus credit line is ' + fmtM(Math.floor(ctx.view.budget)) + '. Unless your businesses earn enough this round, the game will sell your weakest business. The market will not let you bid, and the lock will not accept new spending.'));
   // role rotation banner (spec 01 section 13): shown during the news phase when the job changed since last round
   const key = 'pt_role_' + S.gid + '_' + S.seat.id, last = safeGet(key);
@@ -282,7 +288,7 @@ function render() {
   if (res && safeSessionGet('pt_dismiss_' + S.gid + '_' + g.round) !== '1') root.append(resultsOverlay(ctx, res, () => { safeSessionSet('pt_dismiss_' + S.gid + '_' + g.round, '1'); render(); }));
   if (g.phase === 'final') {
     const row = S.final && S.final.rows.find(r => r.id === S.seat.team_id);
-    root.append(h('section.finalbox', [h('h2', 'Game over. Watch the big screen for the replay.'), row ? autopsy(row) : h('p', 'Your team\'s autopsy is loading...')]));
+    root.append(h('section.finalbox', [h('h2', 'Game over. Watch the big screen for the replay.'), h('p.sub', 'Two prizes: Biggest parent goes to the highest enterprise value, and Best parent goes to the most value added over what the businesses would be worth on their own.'), row ? autopsy(row) : h('p', 'Your team\'s autopsy is loading...')]));
   }
   if (S.drawer) root.append(h('div.overlay', { onclick: e => { if (e.target.classList.contains('overlay')) { S.drawer = null; render(); } } }, [S.drawer === 'caps' ? capabilitiesPanel(ctx.view) : historyPanel(S.results), h('button.go.closebtn', { type: 'button', onclick: () => { S.drawer = null; render(); } }, 'Close')]));
   app.replaceChildren(root);

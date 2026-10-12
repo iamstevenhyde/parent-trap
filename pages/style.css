@@ -335,3 +335,32 @@ button.big { font-size: 22px; padding: 14px 32px; } button.danger { border-color
 .pj-auction-slot.dense3 .al { font-size: 15px; max-width: none; line-height: 1.1; }
 .pj-auction-slot.dense3 .aurow { padding: 0 8px; } .pj-auction-slot.dense3 .aulist { gap: 2px 6px; } .pj-auction-slot.dense3 .an { overflow: visible; text-overflow: clip; }
 .pj-auction-slot.dense3 .aulist { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .pj-auction-slot.dense3 .an { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 16px; } .pj-auction-slot.dense3 .aurow { min-width: 0; }
+
+/* ---- 2026-10-11 round 2: chyron only (no news panel), 4-row pies, a bigger auction, two-line chyron, compact header, opening auction ---- */
+.pj-head.compact { min-height: 104px; padding: 2px 36px; border-bottom-width: 2px; }
+.pj-head.compact .pj-title b { font-size: 32px; } .pj-head.compact .pj-title span { font-size: 26px; }
+.pj-head.compact .pj-timer .big { font-size: 78px; } .pj-head.compact .pj-timer .phase { font-size: 28px; } .pj-head.compact .pj-timer .lockc { font-size: 20px; min-height: 0; }
+.pj-head.compact .pj-total b { font-size: 38px; } .pj-head.compact .pj-total span { font-size: 22px; }
+.pj-body { padding: 8px 36px; }
+.pj-world.auc { grid-template-columns: 1fr 660px; gap: 20px; }
+.pj-legend { padding: 2px 0; } .pj-left .pj-legend { font-size: 20px; gap: 18px; } .pj-left .pj-legend svg { width: 24px; height: 24px; }
+.pj-auction-slot.big { border: 3px solid var(--amber); }
+.pj-auction-slot.big h3 { font-size: 36px; color: var(--amber); letter-spacing: .06em; margin: 0; }
+.pj-auction-slot.big > p.sub { font-size: 19px; margin: 2px 0 8px; }
+.pj-auction-slot.big .aulist { display: grid; gap: 6px; }
+.pj-auction-slot.big .aurow { padding: 6px 12px; }
+.pj-auction-slot.big .an { font-size: 26px; } .pj-auction-slot.big .ap { font-size: 34px; } .pj-auction-slot.big .al { font-size: 19px; }
+.pj-auction-slot.big.dense2 .aurow { padding: 3px 10px; } .pj-auction-slot.big.dense2 .an { font-size: 22px; } .pj-auction-slot.big.dense2 .ap { font-size: 28px; } .pj-auction-slot.big.dense2 .al { font-size: 16px; }
+.pj-auction-slot.big.dense3 > p.sub { display: block; font-size: 15px; margin: 0 0 3px; }
+.pj-auction-slot.big.dense3 .aulist { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3px 6px; }
+.pj-auction-slot.big.dense3 .an { font-size: 17px; } .pj-auction-slot.big.dense3 .ap { font-size: 21px; } .pj-auction-slot.big.dense3 .al { font-size: 14px; }
+.pj-opening .op-lede { font-size: 28px; margin: 2px 0 6px; color: var(--amber); }
+.chyron { height: 112px; } .pj-ticker-spacer { height: 112px; } .page-projector .pj-ticker-spacer { height: calc(112px / var(--pjz, 1)); }
+.chyron .tk { flex-direction: column; align-items: flex-start; gap: 2px; font-size: 30px; }
+.chyron .tk-top { display: inline-flex; align-items: center; gap: 12px; }
+.chyron .tk-sub { font-size: 21px; color: var(--sub); padding-left: 4px; }
+.tier.wire { border-color: var(--green); color: var(--green); } .tier.tradepress { border-color: var(--amber); color: var(--amber); }
+.mk-grid.dense.opening { grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.mk-grid.dense.opening .mk-card { padding: 6px 10px; gap: 1px; } .mk-grid.dense.opening .mk-name { font-size: 19px; line-height: 1.12; } .mk-grid.dense.opening .mk-price b { font-size: 38px; } .mk-grid.dense.opening .mk-price span { font-size: 15px; }
+.mk-grid.dense.opening .mk-lead { font-size: 18px; } .mk-grid.dense.opening .mk-hist, .mk-grid.dense.opening .mk-ind { display: none; } .mk-grid.dense.opening .mk-head svg { width: 30px; height: 30px; }
+.pj-opening .op-lede { font-size: 24px; margin: 0 0 4px; } .pj-opening .mk-top { margin-bottom: 4px; } .pj-opening .mk-top h2 { font-size: 28px; } .pj-opening .mk-top span { font-size: 20px; }

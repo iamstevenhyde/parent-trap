@@ -221,5 +221,5 @@ export function submitDecisions(state, teamId, dec) {
 export function lotSignal(state, teamId, lotKey) { return state.teams[teamId].signals[lotKey]; }
 export { chainById, valueOf, saOf, CAPABILITIES, evOf, emit, normalizeDecision };
 import { snapshot } from './resolve.js';
-export { resolveRound, snapshot } from './resolve.js';
+export { resolveRound, snapshot, clearOpeningAuction } from './resolve.js';
 export { score, counterfactual, leaderboard } from './scoring.js';

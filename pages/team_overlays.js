@@ -55,7 +55,7 @@ export function resultsOverlay(ctx, res, onClose) {
     h('h2', 'Round ' + res.round + ' results'),
     timeout ? h('p.banner', timeout) : null,
     h('div.stack', eventStack(res.events)),
-    h('footer.sumline', 'Your company: ' + fmtM(res.ev) + ', rank ' + res.rank + ' of ' + res.of + '. Change: ' + fmtSigned(res.delta) + '.'),
+    h('footer.sumline', 'Your company: ' + fmtM(res.ev) + ', rank ' + res.rank + ' of ' + res.of + ' (AI conglomerates included). Change: ' + fmtSigned(res.delta) + '.'),
     h('button.go', { type: 'button', onclick: onClose }, 'Close'),
   ]));
 }

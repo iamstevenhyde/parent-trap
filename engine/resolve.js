@@ -105,7 +105,7 @@ function autoBuild(state, ctx) {
   if (!cands.length) return;
   for (const id of state.teamIds) {
     const d = state.decisions[1][id];
-    if (ctx.winners.has(id) || d.builds.length || (state.opts.skipMandate || []).includes(id)) continue;
+    if (ctx.winners.has(id) || (state.openingWinners || []).includes(id) || d.builds.length || (state.opts.skipMandate || []).includes(id)) continue;
     // cheapest non-scarce lot, preferring one that does not clash with what the team already holds (spec 14.5 says cheapest)
     const held = heldUnits(state, id).filter(h => h.w === 1).map(h => h.u);
     const pick = cands.find(l => held.every(h => matrixSigma(state.units[l.unitId].ind, h.ind) >= 0)) || cands[0];
@@ -417,6 +417,38 @@ function shockEvents(state) {
       emit(state, { type: 'shock_team_impact', team: id, chain: c.id, units: names, amount: delta, text: names.length ? ch.name + ': for your ' + names.join(' and ') + ', earnings and value move by about ' + (delta >= 0 ? '+' : '-') + money(Math.abs(delta)) + ' in the first round.' : ch.name + ': this did not touch your businesses.' });
     }
   }
+}
+
+// ---------- the starting auction (2026-10-11, Steven's round 2 feedback) ----------
+// Used only when the host runs an opening auction before round 1 (default off in the engine, so every gate is unchanged).
+// The round-1 lots are auctioned first; the winners own their company from the start of round 1 (it earns in round 1 like a
+// company they inherited), and the lots nobody won stay listed for the rest of round 1. Reuses clearAuctions and the same join
+// bookkeeping as joinsAndBuilds, so the ledger terms still sum to enterprise value. bids = { humanBids: {T1: [{lot, amount}]}, botBids: {...} }.
+export function clearOpeningAuction(state, { humanBids = {}, botBids = {} } = {}) {
+  if (state.round !== 1 || state.phase !== 'open') throw new Error('The opening auction runs once, at the start of round 1.');
+  if (state.openingDone) return state;
+  const t = 1, decs = state.decisions[t];
+  let order = 0;
+  for (const id of state.teamIds) decs[id] = { ...normalizeDecision({}), bids: (humanBids[id] || []).map(b => ({ ...b })), lockSeq: order++ };
+  state.botIds.forEach((id, i) => { decs[id] = { ...normalizeDecision({}), bids: (botBids[id] || []).map(b => ({ ...b })), lockSeq: 2e6 + i }; });
+  const ctx = { winners: new Set(), joins: [], removed: new Set(), W: {} };
+  clearAuctions(state, ctx);
+  const sold = new Set();
+  for (const j of ctx.joins) {
+    const u = j.unit;
+    u.owners = j.owners; u.Z = 0; u.Zb = 0; u.ins = null; u.hedges = []; u.cap = null; u.tn = null;
+    const v = valueOf(state, u);
+    j.rec.valueAtJoin = v;
+    for (const o of u.owners) { post(state, o.team, 'T3', o.w * v); openSpell(state, o.team, u, o.w, t); }
+    sold.add(j.rec.lot);
+  }
+  for (const id of allTeams(state)) delete decs[id];
+  state.lots = state.lots.filter(l => !sold.has(l.key));
+  state.lotsByKey = Object.fromEntries(state.lots.map(l => [l.key, l]));
+  state.openingWinners = [...ctx.winners];
+  state.openingDone = true;
+  snapshot(state, 0);
+  return state;
 }
 
 // ---------- the round ----------
