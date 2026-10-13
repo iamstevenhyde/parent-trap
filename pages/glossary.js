@@ -61,3 +61,12 @@ export function installGlossary() {
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closePop(); });
 }
+
+// What each capability gives once it is earned (two uses). Numbers come from engine/config.js: DEAL_FEE 1.5%, BUILD_COST 60% vs BUILD_COST_ACQ 55%, INT_COST_SAVE 20%, INT_REAL 70% vs INT_REAL_CAP 85%,
+// TURN_COST_PCT 4% vs TURN_COST_PCT_OP 3%, TURN_GAIN 12% vs TURN_GAIN_OP 16%, SIGMA_DEEP 5.3% vs SIGMA_DEEP_ANALYST 4.2%.
+export const CAP_TEXT = {
+  acquirer: "You stop paying the 1.5% deal fee on purchases, and a build costs 55% of the company's value instead of 60%.",
+  integrator: 'Integrate projects cost 20% less, and a project that works captures 85% of the promised synergy instead of 70%.',
+  operator: "A Turnaround costs 3% of the business's value instead of 4%, and wins back 16% of its value instead of 12%.",
+  analyst: 'Your Deep dives are sharper: the error in your estimate shrinks from about 5.3% to 4.2%.',
+};

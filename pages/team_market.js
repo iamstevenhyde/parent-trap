@@ -89,7 +89,7 @@ function allyBox(ctx, l, lead, own) {
       const amtIn = h('input.bidamt', { type: 'number', min: l.fixed ? l.opening : l.next, step: l.step || 5, placeholder: l.fixed ? 'Fixed price ' + Math.round(l.opening) : 'Amount (at least ' + Math.round(l.next) + ')', value: f, disabled: l.fixed, 'aria-label': 'Joint bid amount in millions for ' + l.name, oninput: e => { ui['ca' + l.key] = e.target.value; } });
       out.push(h('div.ally.form', [
         pic(),
-        h('label', ['Partner team ', h('select.allywith', { 'aria-label': 'Partner team', onchange: e => { (ui.allyWith = ui.allyWith || {})[l.key] = e.target.value; ctx.rerender(); } }, others.map(t => h('option', { value: t.id, selected: t.id === sel }, t.name)))]),
+        h('label', ['Partner team ', h('select.allywith', { 'aria-label': 'Partner team', onchange: e => { (ui.allyWith = ui.allyWith || {})[l.key] = e.target.value; e.target.blur(); ctx.rerender(); } }, others.map(t => h('option', { value: t.id, selected: t.id === sel }, t.name)))]),
         amtIn,
         h('button.bid', { type: 'button', onclick: () => {
           const a = l.fixed ? l.opening : Number(ui['ca' + l.key] || l.next);

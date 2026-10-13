@@ -1,7 +1,7 @@
 // Results overlay, history, capabilities and the final autopsy for the team page (spec 05 sections 1.9, 1.11, 2.5).
 
 import { h, fmtM, fmtSigned } from './util.js';
-import { gl } from './glossary.js';
+import { gl, CAP_TEXT } from './glossary.js';
 import { SCENE } from './art.js';
 
 // Card order from the spec: auctions, shocks, synergy and anergy, complexity, capabilities, forced sale or receivership.
@@ -45,10 +45,8 @@ export function eventCard(e) {
 }
 export function eventStack(events) {
   const out = [];
-  let curse = false;   // the winner's-curse picture shows once per report, on the first overpaid purchase
   for (const [, types] of ORDER) for (const e of events) if (types.includes(e.type) && e.type !== 'round_summary') {
     const card = eventCard(e);
-    if (e.type === 'winners_curse' && !curse) { curse = true; card.append(h('img.curse-card', { src: SCENE.curse, alt: '' })); }
     out.push(card);
   }
   return out;
@@ -71,14 +69,9 @@ export function resolvingOverlay() {
 }
 
 export function capabilitiesPanel(view) {
-  const benefits = {
-    acquirer: 'your bids lose less to the winner\'s curse and builds cost less',
-    integrator: 'your Integrate projects pay more and cost less',
-    operator: 'your Turnarounds cost less and pay more',
-    analyst: 'your Deep dives are cheaper and sharper',
-  };
+  const benefits = CAP_TEXT;
   return h('div.sheet', [h('h2', gl('capability', 'Capabilities')), h('p.sub', 'A skill your company earns by doing the same kind of move well twice.'),
-    ...view.capList.map(c => h('div.capline' + (view.capabilities[c] ? '.on' : ''), [h('b', view.capLabels[c] + ' I'), ' ' + (view.capabilities[c] ? 'Earned. ' : view.uses[c] + ' of 2 uses. ') + 'When earned, ' + benefits[c] + '.']))]);
+    ...view.capList.map(c => h('div.capline' + (view.capabilities[c] ? '.on' : ''), [h('b', view.capLabels[c] + ' I'), ' ' + (view.capabilities[c] ? 'Earned. ' : view.uses[c] + ' of 2 uses. ') + 'When earned: ' + benefits[c]]))]);
 }
 
 export function historyPanel(results, finalRow) {

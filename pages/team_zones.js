@@ -2,7 +2,7 @@
 // Pure rendering: every function takes the context built in team.js and returns DOM. Edits go back through ctx.write().
 
 import { h, fmtM, mmss, wordCount, pct } from './util.js';
-import { gl } from './glossary.js';
+import { gl, CAP_TEXT } from './glossary.js';
 import { icon, IND, artUrl, SCENE, LAST_CALL_ROUND } from './art.js';
 import { meter, attentionUsed, lockReason, describeAction, OWNER_LABEL, can, ROLES_ON } from './roles.js';
 
@@ -45,9 +45,10 @@ export function renderTopBar(ctx) {
     h('div.tb-round', [h('b', game.round ? 'Round ' + game.round + ' of 5: ' + roundName : 'Lobby'), h('span.sub', phaseWord)]),
     h('div.tb-timer.' + tcls + (game.clock && game.clock.paused ? '.paused' : ''), [h('b#timer', game.clock ? (game.clock.paused ? 'PAUSED ' : '') + mmss(left) + ' left' : '--:--'), h('span.sub', phaseWord)]),
     h('div.tb-cash', [
+      view ? h('b.bigmoney', ['Cash ' + fmtM(cash), h('small', ' ' + fmtM(m.free) + ' free to spend')]) : null,
       h('div.meterbar', { title: 'Cash plus credit line, with what your plan reserves' }, [h('i.res', { style: 'width:' + resPct + '%' })]),
       h('span.sub', view ? ['Cash ' + fmtM(cash) + ' + ', gl('creditline'), ' ' + fmtM(line) + ' (borrowing) = ' + fmtM(total) + ' to use. ', gl('reserved'), ': ' + fmtM(m.total) + (m.obl > 0 ? ' (includes ' + fmtM(m.obl) + ' due at end of round)' : '') + '. ', gl('free'), ': ' + fmtM(m.free) + '.'] : '')]),
-    h('div.tb-att', [h('div.adots', dots), h('span.sub', [gl('attention'), ': ' + attLeft + ' of ' + (view ? view.attMax : 3) + ' attention left'])]),
+    h('div.tb-att', [h('b.bigatt', attLeft + ' of ' + (view ? view.attMax : 3) + ' actions left'), h('div.adots', dots), h('span.sub', [gl('attention'), ': ' + attLeft + ' of ' + (view ? view.attMax : 3) + ' attention left'])]),
     h('div.tb-role', [ROLES_ON ? h('span.badge', { title: role ? role.hint : '' }, role ? role.label : 'No seat') : null, h('span.sub', ctx.seatName + ' (you)')]),
   ]);
 }
@@ -143,7 +144,7 @@ const ACTION_ROWS = [
     pays: 'If the risk happens, the hit to that business is cut in half. If it does not, the money is lost. Timing rule: a risk can be protected against in the two rounds after it first shows up in the news, so each risk has its own window and the choice appears only while its window is open.',
     costs: () => 'A few percent of that business\'s value (shown when you choose), plus 1 attention.' },
 ];
-const CAP_BENEFIT = { acquirer: 'your bids lose less to the winner\'s curse and builds cost less', integrator: 'Integrate costs 20% less and pays more', operator: 'Turnarounds cost less and pay more', analyst: 'Deep dives are cheaper and sharper' };
+const CAP_BENEFIT = CAP_TEXT;
 
 // Why an action is not on the table right now, or null when it is (Steven's ask 5). The reason shows on the row so a player always knows why.
 function notRelevant(ctx, key) {
@@ -167,7 +168,7 @@ function whyHere(ctx, key) {
 }
 
 function select(items, onChange, val) {
-  const s = h('select', { onchange: e => onChange(e.target.value) }, items.map(([v, l]) => h('option', { value: v, selected: v === val }, l)));
+  const s = h('select', { onchange: e => { const v = e.target.value; e.target.blur(); onChange(v); } }, items.map(([v, l]) => h('option', { value: v, selected: v === val }, l)));
   return s;
 }
 
@@ -197,7 +198,8 @@ function pickerFor(ctx, key) {
     if (!caps.length) return h('div.picker', 'Nothing left to develop.');
     p.cap = p.cap && caps.includes(p.cap) ? p.cap : caps[0];
     form.append(select(caps.map(c => [c, view.capLabels[c] + ' (' + view.uses[c] + ' of 2 uses)']), v => { p.cap = v; ctx.rerender(); }, p.cap),
-      h('p.sub', 'Cost ' + fmtM(view.costs.devcap) + '. Counts as one use. Once you have two uses of ' + view.capLabels[p.cap] + ', ' + CAP_BENEFIT[p.cap] + '.'),
+      h('p.sub', 'Cost ' + fmtM(view.costs.devcap) + '. Counts as one use. Once you have two uses of ' + view.capLabels[p.cap] + ', the skill is yours for the rest of the game.'),
+      h('ul.capinfo', caps.map(c => h('li' + (c === p.cap ? '.sel' : ''), [h('b', view.capLabels[c] + ': '), CAP_BENEFIT[c]]))),
       h('button.go', { type: 'button', onclick: () => add({ type: 'devcap', cap: p.cap }) }, 'Add Develop capability'), cancel);
   } else if (key === 'deepdive') {
     const opts = [];

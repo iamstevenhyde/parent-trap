@@ -233,7 +233,15 @@ function updateLockUI() {
 
 // ---------- render ----------
 const typing = () => { const a = document.activeElement; return a && a.matches && a.matches('input[type=text],input[type=number],textarea,select') && app.contains(a); };
-document.addEventListener('focusout', () => setTimeout(() => { if (S.dirty && !typing()) render(); }, 30));
+// A redraw between mousedown and mouseup swaps the button under the finger and the click is lost (the "needs two clicks" and "Save name does nothing" reports, 10/13).
+// So while a pointer is held down render() only marks the page dirty, and the redraw runs just after release.
+let pressedAt = 0;
+const pressing = () => pressedAt && Date.now() - pressedAt < 4000;
+document.addEventListener('pointerdown', () => { pressedAt = Date.now(); }, true);
+const released = () => { if (!pressedAt) return; pressedAt = 0; setTimeout(() => { if (S.dirty && !typing()) render(); }, 60); };
+document.addEventListener('pointerup', released, true);
+document.addEventListener('pointercancel', released, true);
+document.addEventListener('focusout', () => setTimeout(() => { if (S.dirty && !typing() && !pressing()) render(); }, 30));
 
 function tick() {
   const t = $('#timer');
@@ -246,7 +254,7 @@ function lobbyPanel(ctx) {
   const nameIn = h('input#teamname', { type: 'text', value: team.name, maxLength: 30, disabled: !!team.renamed });
   return h('section.lobby', [
     h('h2', 'Waiting for the instructor to start.'),
-    h('p', ['Your team: ', nameIn, h('button', { type: 'button', disabled: !!team.renamed, onclick: async () => { await S.store.upsertTeam({ game_id: S.gid, team_id: team.team_id, name: nameIn.value.trim() || team.name, renamed: true }); toast('Team name saved.'); } }, team.renamed ? 'Name is set' : 'Save name')]),
+    h('p', ['Your team: ', nameIn, h('button', { type: 'button', disabled: !!team.renamed, onclick: async () => { const nm = nameIn.value.trim() || team.name; try { await S.store.upsertTeam({ game_id: S.gid, team_id: team.team_id, name: nm, renamed: true }); team.name = nm; team.renamed = true; toast('Team name saved.'); render(); } catch (e) { toast('Could not save the name. Check your connection and try again.'); } } }, team.renamed ? 'Name is set' : 'Save name')]),
     h('p.sub', 'You can change the team name once, here in the lobby.'),
     h('h3', 'Your team (' + mates.length + ' seats)'),
     ...mates.map(x => h('div.matesrow', [h('b', x.name), (ROLES_ON ? ' ' + roleFor(S.seats, x, 1).label : '') + (x.id === S.seat.id ? ' (you)' : '')])),
@@ -256,7 +264,7 @@ function lobbyPanel(ctx) {
 
 function render() {
   if (!S.game || !S.seat) return;
-  if (typing()) { S.dirty = true; return; }
+  if (typing() || pressing()) { S.dirty = true; return; }
   S.dirty = false;
   // Remember where every scrolling pane was (the page itself, and each zone, which scrolls on its own) so a redraw never throws the player back to the top.
   const ctx = buildCtx(), g = S.game, scroll = { y: window.scrollY, zones: Object.fromEntries([...app.querySelectorAll('.zone[data-zone]')].map(z => [z.dataset.zone, z.scrollTop])) };

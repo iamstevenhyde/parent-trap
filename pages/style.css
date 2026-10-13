@@ -119,6 +119,9 @@ a { color: var(--blue); }
 .ev-num { font-variant-numeric: tabular-nums; color: var(--amber); font-weight: 600; }
 .sumline { margin: 12px 0; font-weight: 600; }
 .hist { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
+.topbar b.bigmoney { font-size: 28px; line-height: 1.1; color: var(--green); } .topbar b.bigmoney small { font-size: 14px; font-weight: 400; color: var(--sub); }
+.topbar b.bigatt { font-size: 22px; line-height: 1.1; color: var(--amber); }
+.capinfo { margin: 0; padding-left: 18px; font-size: 14px; color: var(--sub); } .capinfo li { margin: 3px 0; } .capinfo li.sel { color: var(--text, #e8edf3); } .capinfo b { color: inherit; display: inline; font-size: inherit; }
 .capline { padding: 6px 0; color: var(--sub); } .capline.on { color: var(--green); }
 .finalbox { padding: 16px 20px; }
 .autopsy { max-width: 760px; }

@@ -51,7 +51,7 @@ export function artUrl(ind, key = '') {
   return ART_ROOT + f;
 }
 export const AUCTIONEER = ART_ROOT + 'auctioneer.webp';
-// Scene art (Midjourney, 2026-10-12). Each has one job: alliance box, last-call banner, final winner, winner's curse, projector lobby.
-export const SCENE = { alliance: ART_ROOT + 'parent-trap-alliance.webp', lastcall: ART_ROOT + 'parent-trap-lastcall.webp', winner: ART_ROOT + 'parent-trap-winner.webp', curse: ART_ROOT + 'parent-trap-curse.webp', lobby: ART_ROOT + 'parent-trap-lobby.webp' };
+// Scene art (Midjourney, 2026-10-12). Each has one job: alliance box, last-call banner, final winner, projector lobby. (The winner's curse picture, parent-trap-curse.webp, is unwired 10/13 at Steven's ask; the file stays on disk.)
+export const SCENE = { alliance: ART_ROOT + 'parent-trap-alliance.webp', lastcall: ART_ROOT + 'parent-trap-lastcall.webp', winner: ART_ROOT + 'parent-trap-winner.webp', lobby: ART_ROOT + 'parent-trap-lobby.webp' };
 // The round that carries the last-call banner: the last round with an auction (4 since 2026-10-12 evening, when round 5 lost its auction).
 export const LAST_CALL_ROUND = 4;
