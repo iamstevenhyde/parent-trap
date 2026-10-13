@@ -38,6 +38,9 @@ export function evOf(state, teamId) {
   return ev;
 }
 
+// Corporate actions a team may take this round: the base limit plus any alliance-dividend action earned by a co-bid win last round.
+export const attLimit = (state, t) => state.cfg.ATT_PER_ROUND + (t.attBonusRound === state.round ? state.cfg.COBID_ATT : 0);
+
 export function normalizeDecision(d) {
   return { bids: [], builds: [], capital: {}, actions: [], why: '', predicted: null, ...d };
 }

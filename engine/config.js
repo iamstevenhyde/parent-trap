@@ -59,6 +59,7 @@ export const CONFIG = {
   BUILD_COST_ACQ: 0.55,
   BUILD_STRENGTH: 0.70, BUILD_STEP: 0.15, BUILD_DELAY: 2, BUILD_LAST_ORDER_ROUND: 3,
   DEAL_FEE: 0.015,
+  COBID_CASH: 15, COBID_ATT: 1,   // alliance dividend (Steven, 2026-10-13): each partner of a winning co-bid gets this much cash now and this many extra actions next round
   DEVCAP_COST: 10,
   SALE_MARKET: 0.85, SALE_FORCED: 0.80, LIST_FRACTIONS: [0.8, 1.0, 1.2],
 

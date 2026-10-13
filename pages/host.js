@@ -5,7 +5,7 @@
 // (rebuild()). That is how an admin reload, or a second admin laptop, picks the game up where it was.
 
 import { createGame, openRound, submitDecisions, validateDecisions, resolveRound, clearOpeningAuction, grantCash, GRANT_MAX } from '../engine/engine.js';
-import { applyDeepDives } from '../engine/core.js';
+import { applyDeepDives, attLimit } from '../engine/core.js';
 import { estimate } from '../engine/model.js';
 import { buildTeamView, buildPublic, buildResult, buildFinal, exportLog } from './views.js';
 import { planFromRow, attentionUsed } from './roles.js';
@@ -154,7 +154,7 @@ export class Host {
       let changed = false;
       const dives = plan.actions.filter(a => a.type === 'deepdive');
       const withCommitted = { ...plan, actions: [...this.committedFor(tid).filter(c => !dives.some(d => this._diveKey(d) === this._diveKey(c))), ...plan.actions] };
-      if (attentionUsed(withCommitted, this.live) <= this.state.cfg.ATT_PER_ROUND) {
+      if (attentionUsed(withCommitted, this.live) <= attLimit(this.state, this.state.teams[tid])) {
         for (const a of dives) {
           const valid = a.lot ? !!this.state.lotsByKey[a.lot] : (a.pair && a.pair.length === 2);
           if (valid && this._commitDive(tid, row.round, a)) changed = true;

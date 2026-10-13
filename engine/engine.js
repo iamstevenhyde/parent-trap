@@ -11,7 +11,7 @@ import { buildSchedule, chainById } from './schedule.js';
 import {
   CO, buildWorld, trueTheta, makeUnit, valueOf, saOf, estimate, heldUnits, reservedFor, budgetOf,
 } from './model.js';
-import { CAPABILITIES, emit, emptyLedger, openSpell, evOf, normalizeDecision, applyDeepDives, post, money } from './core.js';
+import { CAPABILITIES, emit, emptyLedger, openSpell, evOf, normalizeDecision, applyDeepDives, post, money, attLimit } from './core.js';
 
 function newTeam(id, isBot, name, cfg, seat) {
   return {
@@ -154,7 +154,7 @@ export function validateDecisions(state, teamId, dec) {
   const d = normalizeDecision(dec);
   // liveAuction (default off): bids are won in the live market and limited by cash, so they do not use attention
   const attention = (state.opts.liveAuction ? 0 : d.bids.length) + d.builds.length + d.actions.length;
-  if (!t.isBot && attention > cfg.ATT_PER_ROUND) errors.push('You can take at most ' + cfg.ATT_PER_ROUND + ' corporate actions. You picked ' + attention + '.');
+  if (!t.isBot && attention > attLimit(state, t)) errors.push('You can take at most ' + attLimit(state, t) + ' corporate actions. You picked ' + attention + '.');
   for (const b of d.bids) {
     const lot = state.lotsByKey[b.lot];
     if (!lot) errors.push('Lot ' + b.lot + ' is not listed this round.');

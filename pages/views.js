@@ -3,7 +3,7 @@
 // Nothing here changes the engine state.
 
 import { score, leaderboard } from '../engine/engine.js';
-import { evOf, CAPABILITIES, CAP_LABEL } from '../engine/core.js';
+import { evOf, CAPABILITIES, CAP_LABEL, attLimit } from '../engine/core.js';
 import {
   CO, valueOf, saOf, heldUnits, lineAvail, budgetOf, feeRate, integrateCost, turnCost, buildCostOf, hedgePct,
 } from '../engine/model.js';
@@ -73,7 +73,7 @@ export function buildTeamView(state, tid, wins = []) {
     v: 1, teamId: tid, name: t.name, round, seed: state.seed, liveAuction: !!state.opts.liveAuction,
     obl: state.opts.liveAuction ? obligations(state, tid, { bids: wins }) : { cc: 0, fin: 0, total: 0 },
     hostGrant: t.grants || 0, cash: t.cash, drawn: t.drawn, line: lineAvail(state, t), budget: budgetOf(state, tid), feeRate: feeRate(state, tid), recLoan: t.recLoan,
-    receivership: !!t.receivership, attMax: cfg.ATT_PER_ROUND, ev: evOf(state, tid), prevRank: prev && prev.teams[tid] ? prev.teams[tid].rank : null,
+    receivership: !!t.receivership, attMax: attLimit(state, t), ev: evOf(state, tid), prevRank: prev && prev.teams[tid] ? prev.teams[tid].rank : null,
     ofTeams: state.teamIds.length + state.botIds.length,
     capabilities: { ...t.capabilities }, uses: { ...t.uses }, capLabels: CAP_LABEL, capList: CAPABILITIES,
     units, pairs, lots, costs, hedges, divest, builds: t.cip.map(c => ({ name: CO[c.co] ? CO[c.co].name : c.co, cost: c.cost })),

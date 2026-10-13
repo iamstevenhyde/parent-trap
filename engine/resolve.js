@@ -74,6 +74,10 @@ function clearAuctions(state, ctx) {
       if (paid > trueNow) emit(state, { type: 'winners_curse', team: id, unit: u.id, price: paid, trueValue: trueNow, text: 'Winner\'s curse: you overpaid. You paid ' + money(paid) + ' for ' + co + '. After the reveal, it is worth ' + money(trueNow) + '. You lost ' + money(paid - trueNow) + ' on this deal. The team with the highest guess usually wins, and the highest guess is usually too high.' });
       else emit(state, { type: 'good_buy', team: id, unit: u.id, price: paid, trueValue: trueNow, text: 'Good buy. You paid ' + money(paid) + ' for something worth ' + money(trueNow) + '.' });
       if (paid <= trueNow * 1.0001) useCap(state, id, 'acquirer');
+      if (winner.teams.length > 1) {   // alliance dividend: a won co-bid pays each partner cash now and one extra action next round
+        tm.cash += cfg.COBID_CASH; post(state, id, 'T3', cfg.COBID_CASH); tm.attBonusRound = t + 1;
+        emit(state, { type: 'alliance_dividend', team: id, amount: cfg.COBID_CASH, text: 'Alliance dividend: +' + money(cfg.COBID_CASH) + ' and +' + cfg.COBID_ATT + ' action next round. You won ' + co + ' together with another team.' });
+      }
     }
     if (winner.unmatchedAlly) emit(state, { type: 'ally_unmatched', team: winner.teams[0], text: 'Your partner did not match the co-bid, so it went in as your own bid.' });
     if (lot.kind === 'team') {

@@ -6,7 +6,7 @@ import { SCENE } from './art.js';
 
 // Card order from the spec: auctions, shocks, synergy and anergy, complexity, capabilities, forced sale or receivership.
 const ORDER = [
-  ['auction', ['auction_won', 'winners_curse', 'good_buy', 'auction_lost', 'ally_unmatched', 'auto_build', 'build_ordered', 'build_completed', 'unit_acquired_by_team', 'listing_posted', 'divest_market']],
+  ['auction', ['auction_won', 'alliance_dividend', 'winners_curse', 'good_buy', 'auction_lost', 'ally_unmatched', 'auto_build', 'build_ordered', 'build_completed', 'unit_acquired_by_team', 'listing_posted', 'divest_market']],
   ['shock', ['shock_resolved', 'shock_dud', 'shock_team_impact', 'hedge_bought']],
   ['synergy', ['synergy_fired', 'synergy_not_earned', 'anergy_fired', 'turnaround_worked', 'turnaround_failed', 'deep_dive']],
   ['complexity', ['complexity_charged']],
@@ -16,7 +16,7 @@ const ORDER = [
 ];
 const GLOSS = { winners_curse: 'winners_curse', synergy_fired: 'synergy', anergy_fired: 'anergy', synergy_not_earned: 'integrate', complexity_charged: 'complexity', capability_earned: 'capability', capability_progress: 'capability', receivership: 'receivership', turnaround_worked: 'turnaround', turnaround_failed: 'turnaround', deep_dive: 'deepdive' };
 const BAD = new Set(['winners_curse', 'auction_lost', 'anergy_fired', 'complexity_charged', 'forced_sale', 'receivership', 'turnaround_failed', 'synergy_not_earned']);
-const GOOD = new Set(['host_grant', 'auction_won', 'good_buy', 'synergy_fired', 'capability_earned', 'turnaround_worked']);
+const GOOD = new Set(['alliance_dividend', 'host_grant', 'auction_won', 'good_buy', 'synergy_fired', 'capability_earned', 'turnaround_worked']);
 
 function headBody(e) {
   const text = e.text || '';
@@ -31,6 +31,7 @@ function numberFor(e) {
     case 'auction_won': case 'good_buy': case 'winners_curse': return e.price !== undefined ? 'paid ' + fmtM(e.price) : '';
     case 'complexity_charged': case 'synergy_fired': case 'anergy_fired': return e.amount !== undefined ? fmtM(Math.abs(e.amount)) : '';
     case 'shock_team_impact': return e.amount !== undefined ? fmtSigned(e.amount) : '';
+    case 'alliance_dividend': return e.amount !== undefined ? '+' + fmtM(e.amount) : '';
     case 'host_grant': return e.amount !== undefined ? '+' + fmtM(e.amount) : '';
     case 'divest_market': return e.proceeds !== undefined ? fmtM(e.proceeds) : '';
     default: return '';
