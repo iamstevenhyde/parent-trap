@@ -49,7 +49,7 @@ export function useCap(state, teamId, cap) {
   if (t.uses[cap] >= 2 && !t.capabilities[cap]) {
     t.capabilities[cap] = true;
     const benefit = {
-      acquirer: 'your bids lose less to the winner\'s curse and builds cost less',
+      acquirer: 'you pay no deal fee and your builds cost less',
       integrator: 'your Integrate projects pay more and cost less',
       operator: 'your Turnarounds cost less and pay more',
       analyst: 'your Deep dives are cheaper and sharper',
