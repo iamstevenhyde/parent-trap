@@ -6,7 +6,7 @@ import { $, h, friendlyError, fmtM, fmtBig, fmtSigned, mmss, params, setParam, p
 import { installGlossary } from './glossary.js';
 import { openStore } from './supa.js';
 import { PieBoard } from './pies.js';
-import { IND, IND_ORDER, icon, AUCTIONEER } from './art.js';
+import { IND, IND_ORDER, icon, AUCTIONEER, SCENE, LAST_CALL_ROUND } from './art.js';
 import { autopsy, AUTOPSY_ROWS } from './team_overlays.js';
 
 const app = document.getElementById('app');
@@ -169,7 +169,7 @@ function frame(body) {
   const chg = start ? (tot / start - 1) * 100 : 0;
   return h('div.pj', [
     h('header.pj-head' + (g.phase === 'lobby' ? '' : '.compact'), [
-      h('div.pj-title', [h('b', 'THE PARENT TRAP'), h('span', g.phase === 'final' ? 'Final standings' : g.round ? (g.reveal && g.reveal.opening ? 'Opening auction' : 'Round ' + g.round + ': ' + ROUND_NAMES[g.round]) : 'Lobby')]),
+      h('div.pj-title', [g.phase === 'market' && g.round === LAST_CALL_ROUND && !(g.reveal && g.reveal.opening) ? h('img.pj-lastcall', { src: SCENE.lastcall, alt: '' }) : null, h('b', 'THE PARENT TRAP'), h('span', g.phase === 'final' ? 'Final standings' : g.round ? (g.reveal && g.reveal.opening ? 'Opening auction' : 'Round ' + g.round + ': ' + ROUND_NAMES[g.round]) : 'Lobby')]),
       h('div.pj-timer', [h('div#bigtimer.big', '--:--'), h('div#phaselabel.phase', phaseLabel()), h('div#lockcount.lockc', lockText())]),
       h('div.pj-total', [h('span', 'Total market value'), h('b', fmtBig(tot)), h('span', (chg >= 0 ? '+' : '') + chg.toFixed(0) + '% since start')]),
     ]),
@@ -184,6 +184,7 @@ function lobbyBody() {
   const joined = P.teams.filter(t => P.seats.some(x => x.team_id === t.team_id && !x.removed)).length;
   const base = location.href.split('?')[0].replace('projector.html', 'team.html');
   return h('div.pj-lobby', [
+    h('img.pj-lobby-art', { src: SCENE.lobby, alt: '' }),
     h('h1', 'Waiting for teams.'),
     h('p.big', ['Join at ', h('b', base), ' with your team code.']),
     h('p.big', joined + ' of ' + P.teams.length + ' seats claimed. Seats nobody claims are played by AI.'),
@@ -301,7 +302,7 @@ function auctionReveal(pub, i) {
       : (a.bids.length ? h('h3.' + beat(2), 'Nobody could take it. ' + a.name + ' stays listed.') : null),
     h('div.' + beat(3), [h('div.truth', { style: 'left:' + pct(a.trueValue) }, [h('span', 'Real value: ' + fmtM(a.trueValue))])]),
     a.price !== null ? h('h3.' + beat(4) + (diff > 0 ? '.curse' : '.good'), diff > 0 ? 'Winner\'s curse: ' + a.winners.join(' and ') + ' overpaid by ' + fmtM(diff) + '.' : 'Good buy: ' + a.winners.join(' and ') + ' paid ' + fmtM(-diff) + ' under.') : null,
-    h('img.auc-art', { src: AUCTIONEER, alt: '' }),
+    h('img.auc-art' + (a.price !== null && diff > 0 ? '.curse' : ''), { src: a.price !== null && diff > 0 ? SCENE.curse : AUCTIONEER, alt: '' }),
   ]);
   const base = P.timers; base.forEach(clearTimeout); P.timers = [];
   [0, 1, 2, 3, 4].forEach(k => { const t = setTimeout(() => { el.classList.add('s' + k); if (k === 2 && a.price !== null) queueBreaking('BREAKING: ' + a.winners.join(' and ') + (joint ? ' take over ' : ' takes over ') + a.name + ' for ' + fmtM(a.price)); }, k * 1200); P.timers.push(t); });
@@ -332,10 +333,11 @@ function summaryReveal(pub) {
 // ---- one report per round (Steven's ask 11): the auctions, the six industries and the standings on a single screen ----
 function reportBody(pub) {
   const pr = P.publics[pub.round - 1], prevTot = pr ? pr.totalValue : pub.startTotal, d = (pub.totalValue / prevTot - 1) * 100;
+  let curseShown = false;   // the winner's-curse picture shows once per report, beside the first overpaid purchase
   const auc = pub.auctions.map(a => {
-    const diff = a.price !== null ? a.price - a.trueValue : 0;
+    const diff = a.price !== null ? a.price - a.trueValue : 0, pic = diff > 0 && !curseShown ? (curseShown = true, h('img.curse-mini', { src: SCENE.curse, alt: '', title: "Winner's curse: paid more than it was worth" })) : null;
     return h('div.rp-arow', [icon(a.ind, 24), h('span.an', a.name),
-      a.price !== null ? [h('span.aw', a.winners.join(' and ')), h('b.ap', fmtM(a.price)), h('span.av' + (diff > 0 ? '.curse' : '.good'), 'real ' + fmtM(a.trueValue))] : [h('span.aw', a.bids.length ? 'could not close' : 'no bids'), h('b.ap', ''), h('span.av', '')]]);
+      a.price !== null ? [h('span.aw', a.winners.join(' and ')), h('b.ap', fmtM(a.price)), h('span.av' + (diff > 0 ? '.curse' : '.good'), ['real ' + fmtM(a.trueValue), pic])] : [h('span.aw', a.bids.length ? 'could not close' : 'no bids'), h('b.ap', ''), h('span.av', '')]]);
   });
   const inds = pub.industries.map(c => h('div.rp-ind', [h('div.rp-ih', [icon(c.ind, 34), h('b', c.label)]), h('p.rp-head', c.headline),
     h('div.rp-nums', [['demand', 'Demand'], ['price', 'Price'], ['input', 'Costs'], ['profit', 'Profit']].map(([k, l]) => { const v = c.nums[k], cls = v > 0.005 ? 'up' : v < -0.005 ? 'down' : 'flat'; return h('span.' + cls, l + ' ' + (Math.abs(v) < 0.005 ? '0' : (v > 0 ? '+' : '-') + Math.abs(Math.round(v * 100)) + '%')); })),
@@ -364,6 +366,7 @@ function standingsBody() {
   const col = (title, list, key) => h('section.stcol', [h('h2', title), ...list.map((r, i) => h('div.strow' + (r.isBot ? '.bot' : ''), { dataset: { team: r.id, ev: r.ev }, onclick: () => { P.autopsy = r.id; render(); } }, [
     h('span.rk', i + 1), h('span.nm', r.name, r.isBot ? h('em.ai', 'AI') : null), h('span.vl', key === 'ev' ? fmtBig(r.ev) : fmtSigned(r.parentingAdvantage))]))]);
   return h('div.pj-standings', [
+    h('img.pj-winner-art', { src: SCENE.winner, alt: '' }),
     h('div.ctrl', [h('button.go', { type: 'button', onclick: startReplay }, '▶ Play replay'), h('span', 'Click a company for its autopsy.')]),
     h('p.lede', 'Two prizes: Biggest parent goes to the highest enterprise value, and Best parent goes to the most value added over what the businesses would be worth on their own.'),
     h('div.cols', [col('Biggest parent', byEV, 'ev'), col('Best parent', byPA, 'pa')]),

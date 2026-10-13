@@ -50,7 +50,7 @@ function clearAuctions(state, ctx) {
       const share = 1 / e.teams.length;
       const ok = e.teams.every(id => {
         const tm = state.teams[id];
-        if (tm.isBot && (wins[id] || 0) >= 1) return false;
+        if (tm.isBot && (wins[id] || 0) >= (state.opts.liveAuction && cfg.AI_FLOOR ? cfg.BOT_MAX_WINS_LIVE : 1)) return false;   // live market: an AI seat may win a few lots (it is the price floor)
         if (lot.kind === 'team' && id === lot.seller) return false;
         // liveAuction (default off): cash is already reduced after each win, so subtracting `committed` again counted every earlier win twice
         return e.amount * share * (1 + feeRate(state, id)) <= budgetOf(state, id) - (state.opts.liveAuction ? 0 : (committed[id] || 0)) + 1e-9;

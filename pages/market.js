@@ -19,7 +19,7 @@ import { botDecide } from '../engine/bots.js';
 import { hash01 } from '../engine/rng.js';
 import { leadsLot, shareOfLot } from './flow.js';
 
-export const MARKET_SECONDS = { 1: 240, 2: 150, 3: 150, 4: 180, 5: 150 };
+export const MARKET_SECONDS = { 1: 240, 2: 150, 3: 150, 4: 180, 5: 60 };   // round 5 only shows round-4 listings, so it is short (and skipped when nothing was listed)
 export const SNIPE_MS = 8000;      // a bid in the last 8 seconds puts 8 seconds back on the clock
 export const CUSHION = 1;          // share of cash plus credit line a team may promise in the market (the end-of-round obligations are counted exactly)
 export const MAX_MULT = 3;         // typo guard: no bid above three times the catalog value
@@ -41,7 +41,7 @@ export function openMarket(state) {
   }
   const bots = {};
   for (const id of state.botIds) {
-    if ((state.openingWinners || []).includes(id)) { bots[id] = { targets: [] }; continue; }   // an AI seat that won in the starting auction sits out the rest of round 1
+    if ((state.openingWinners || []).includes(id)) { bots[id] = { targets: [], sitOut: true }; continue; }   // an AI seat that won in the starting auction sits out the rest of round 1
     const dec = botDecide(state, id);
     const targets = (dec.bids || []).filter(b => lots[b.lot] && b.amount > 0).map(b => ({ lot: b.lot, max: b.amount }))
       .sort((a, b) => b.max / lots[b.lot].catalog - a.max / lots[a.lot].catalog || (a.lot < b.lot ? -1 : 1));
@@ -168,14 +168,42 @@ export function joinCoBid(m, state, tid, lotKey, from, rest = 0, now = Date.now(
   return { ok: true, amount: p.amount, kind: 'joint', ally: from };
 }
 
+// AI price floor (2026-10-12 evening, Steven: "ai should buy companies if the bids are too low"). An AI seat with no lead looks at every auction
+// lot with ITS OWN estimate (never the true value, so it can still overpay and underpay). If the price sits below FLOOR_TRIGGER of that estimate
+// and the smallest legal bid is within FLOOR_MAX_SHARE of it (net of the deal fee), it bids the smallest legal bid on the most underpriced lot.
+// It stops as soon as a bid reaches the trigger, so a human who bids near fair value wins. Same cash rule as every bid (placeBid). Not in round 5
+// (no auction) and not before FLOOR_FROM_TICK beats, so it does not jump the opening price.
+function floorMove(m, state, id, now) {
+  const cfg = state.cfg;
+  if (!cfg.AI_FLOOR || state.round >= 5 || m.tick < cfg.FLOOR_FROM_TICK) return null;
+  const sigs = state.teams[id].signals || {}, fee = 1 + feeRate(state, id);
+  let best = null;
+  for (const k of m.order) {
+    const lot = m.lots[k];
+    if (lot.fixed || !sigs[k] || leadsLot(lot, id)) continue;
+    const est = sigs[k].value, cur = lot.price === null ? 0 : lot.price, need = minNext(lot);
+    if (cur >= cfg.FLOOR_TRIGGER * est || need > cfg.FLOOR_MAX_SHARE * est / fee + 1e-9) continue;
+    if (!best || est / need > best.gap) best = { k, need, est, gap: est / need };
+  }
+  if (!best) return null;
+  // the floor bid jumps to FLOOR_BID_SHARE of the estimate (net of fee), not just the smallest raise, so the price a human has to beat is the floor
+  const amount = Math.max(best.need, Math.min(cfg.FLOOR_MAX_SHARE * best.est / fee, Math.round(cfg.FLOOR_BID_SHARE * best.est / fee / 5) * 5));
+  // keep some cash back for the later auctions (rounds 1 to 3), so the floor is still there in round 4
+  if (state.round < 4 && budgetOf(state, id) - committedBy(m, state, id, best.k) - amount * fee < cfg.FLOOR_KEEP) return null;
+  let r = placeBid(m, state, id, best.k, amount, 0, now);
+  if (!r.ok && amount > best.need) r = placeBid(m, state, id, best.k, best.need, 0, now);
+  return r.ok ? { bot: id, lot: best.k, amount: r.amount, floor: true } : null;
+}
+
 // One beat of the AI bidders. A bot that leads a lot holds it; a bot with no lead raises on its first target it can still afford.
 export function botTick(m, state, now = Date.now()) {
   m.tick++;
   const moves = [];
   for (const id of state.botIds) {
-    if (ledBy(m, id).length) continue;
+    const held = ledBy(m, id).length;
+    if (held && !(state.cfg.AI_FLOOR && held < state.cfg.FLOOR_MAX_LEADS)) continue;
     if (hash01(state.seed, 'bot_tick', m.round, id, m.tick) > 0.55) continue;
-    for (const tg of (m.bots[id] || { targets: [] }).targets) {
+    for (const tg of held ? [] : (m.bots[id] || { targets: [] }).targets) {
       const lot = m.lots[tg.lot];
       if (!lot || (lot.high && lot.high.team === id)) continue;
       const need = minNext(lot);
@@ -183,6 +211,7 @@ export function botTick(m, state, now = Date.now()) {
       const r = placeBid(m, state, id, tg.lot, need, 0, now);
       if (r.ok) { moves.push({ bot: id, lot: tg.lot, amount: r.amount }); break; }
     }
+    if (!moves.some(x => x.bot === id) && !(m.bots[id] || {}).sitOut) { const f = floorMove(m, state, id, now); if (f) moves.push(f); }
   }
   return moves;
 }

@@ -3,7 +3,7 @@
 
 import { h, fmtM, mmss, wordCount, pct } from './util.js';
 import { gl } from './glossary.js';
-import { icon, IND, artUrl } from './art.js';
+import { icon, IND, artUrl, SCENE, LAST_CALL_ROUND } from './art.js';
 import { meter, attentionUsed, lockReason, describeAction, OWNER_LABEL, can, ROLES_ON } from './roles.js';
 
 import { renderLiveMarket } from './team_market.js';
@@ -234,8 +234,9 @@ export function renderActions(ctx) {
   const zone = h('section.zone.zone-act' + (anyOk ? '' : '.grey'), { dataset: { zone: 'act' } });
   zone.append(h('h2', ['Corporate actions ', noteDot(ctx, 'ops'), suggestBar(ctx, 'ops')]));
   zone.append(h('p.sub', 'You can do up to 3 corporate actions each round. Each uses 1 of your 3 attention points (' + Math.max(0, view.attMax - used) + ' left), including a Deep dive on a company for sale. Attention resets next round and cannot be saved.' + (view.liveAuction ? ' Bids do not use attention; cash limits them.' : ' Bids and builds use attention too.')));
-  if (ctx.game.round === 5) zone.append(h('p.sub.notnow', 'Round 5 is the last round. The market is open, so you can still win a company, and what you win counts in the final standings. New builds closed after round 3, because a build takes 2 rounds to arrive and a later one would land after the game ends. Listing a business for other teams closed after round 4, because a listing shows to the others one round later. You can still sell a business to the market.'));
-  else if (ctx.game.round === 4) zone.append(h('p.sub.notnow', 'Round 4: you can still list a business for other teams (it shows in round 5) and sell one to the market. New builds closed after round 3, because a build takes 2 rounds to arrive and a later one would land after the game ends.'));
+  if (ctx.game.round === LAST_CALL_ROUND) zone.append(h('img.lastcall-art', { src: SCENE.lastcall, alt: '', loading: 'lazy' }));
+  if (ctx.game.round === 5) zone.append(h('p.sub.notnow', 'Round 5 is the last round and it has no auction. A company another team listed in round 4 can still be bought, at its listed price, if one is shown. New builds closed after round 3, because a build takes 2 rounds to arrive and a later one would land after the game ends. Listing a business for other teams closed after round 4, because a listing shows to the others one round later. You can still sell a business to the market.'));
+  else if (ctx.game.round === 4) zone.append(h('p.sub.notnow', 'Round 4 is the last auction: round 5 has no auction. You can still list a business for other teams (it shows in round 5 at your price) and sell one to the market. New builds closed after round 3, because a build takes 2 rounds to arrive and a later one would land after the game ends.'));
   if (full) zone.append(h('p.warnline', 'You have used all ' + view.attMax + ' attention points.'));
   for (const r of ACTION_ROWS) {
     const ok = ctx.editable(r.perm), open = ctx.ui.picker && ctx.ui.picker.key === r.key, irrelevant = notRelevant(ctx, r.key), here = irrelevant ? '' : whyHere(ctx, r.key);

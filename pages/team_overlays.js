@@ -2,6 +2,7 @@
 
 import { h, fmtM, fmtSigned } from './util.js';
 import { gl } from './glossary.js';
+import { SCENE } from './art.js';
 
 // Card order from the spec: auctions, shocks, synergy and anergy, complexity, capabilities, forced sale or receivership.
 const ORDER = [
@@ -44,7 +45,12 @@ export function eventCard(e) {
 }
 export function eventStack(events) {
   const out = [];
-  for (const [, types] of ORDER) for (const e of events) if (types.includes(e.type) && e.type !== 'round_summary') out.push(eventCard(e));
+  let curse = false;   // the winner's-curse picture shows once per report, on the first overpaid purchase
+  for (const [, types] of ORDER) for (const e of events) if (types.includes(e.type) && e.type !== 'round_summary') {
+    const card = eventCard(e);
+    if (e.type === 'winners_curse' && !curse) { curse = true; card.append(h('img.curse-card', { src: SCENE.curse, alt: '' })); }
+    out.push(card);
+  }
   return out;
 }
 

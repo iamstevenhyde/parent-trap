@@ -79,8 +79,10 @@ export const CONFIG = {
   // listings
   ROUND1_LOTS: ['C2', 'C5', 'R3', 'G3', 'A4', 'S2', 'E1', 'E5', 'A3', 'E4'],   // reworked 2026-10-08 with the inheritance table
   SCARCE: ['S2', 'S3', 'E1'],
-  LOTS_R2: 3, LOTS_R3: 3, LOTS_R4_MAX: 5, LOTS_R5_MAX: 5,   // round 5 (2026-10-12): the market stays open to the end; LOTS_R5_MAX scales like round 4
+  LOTS_R2: 3, LOTS_R3: 3, LOTS_R4_MAX: 5,   // round 5 has no auction lots (Steven, 2026-10-12 evening): it only shows what other teams listed in round 4
   LIST_LAST_ROUND: 4,   // listings for other teams open rounds 2 to 4 (a listing shows one round later, so the last one is bought in round 5)
+  // AI price floor (2026-10-12 evening): an AI seat steps in on an auction lot whose price sits well below that seat's own estimate
+  AI_FLOOR: true, FLOOR_TRIGGER: 0.97, FLOOR_MAX_SHARE: 1.00, FLOOR_BID_SHARE: 0.95, FLOOR_KEEP: 100, FLOOR_FROM_TICK: 6, FLOOR_MAX_LEADS: 4, BOT_MAX_WINS_LIVE: 4, FLOOR_BOT_CASH: 800,   // live games with the floor: AI seats start with this much cash (400 otherwise), because a floor needs cash
 
   // counterfactual
   CF_SEED_CASH: 0,

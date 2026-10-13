@@ -37,11 +37,21 @@ const FILES = {
   ranching: 'ranch-herd-manager.webp',
   ski: 'ski-lodge.webp',
   cannabis: ['cannabis-grower.webp', 'cannabis-retail.webp'],
+  grocery: 'parent-trap-grocery.webp',
+  energy: 'parent-trap-energy.webp',
+  ai: 'parent-trap-ai.webp',
 };
+const BY_CO = Object.fromEntries('R1 R2 R3 R4 R5 R6 G1 G2 G3 G4 G5 G6 C1 C2 C3 C4 C5 C6 S1 S2 S3 S4 S5 S6 E1 E2 E3 E4 E5 E6 A1 A2 A3 A4 A5 A6'.split(' ').map(id => [id, 'co-' + id + '.webp']));   // one picture per company (2026-10-12); sister companies (R3b) use their base company's
 export function artUrl(ind, key = '') {
+  const id = String(key).replace(/^L:/, '').replace(/:team$/, '').split('+')[0], own = BY_CO[id] || BY_CO[id.replace(/[a-z]+$/, '')];
+  if (own) return ART_ROOT + own;
   const f = FILES[ind];
   if (!f) return null;
-  if (Array.isArray(f)) return ART_ROOT + f[(String(key).charCodeAt(1) || 0) % f.length];
+  if (Array.isArray(f)) return ART_ROOT + f[(id.charCodeAt(id.length - 1) || 0) % f.length];
   return ART_ROOT + f;
 }
 export const AUCTIONEER = ART_ROOT + 'auctioneer.webp';
+// Scene art (Midjourney, 2026-10-12). Each has one job: alliance box, last-call banner, final winner, winner's curse, projector lobby.
+export const SCENE = { alliance: ART_ROOT + 'parent-trap-alliance.webp', lastcall: ART_ROOT + 'parent-trap-lastcall.webp', winner: ART_ROOT + 'parent-trap-winner.webp', curse: ART_ROOT + 'parent-trap-curse.webp', lobby: ART_ROOT + 'parent-trap-lobby.webp' };
+// The round that carries the last-call banner: the last round with an auction (4 since 2026-10-12 evening, when round 5 lost its auction).
+export const LAST_CALL_ROUND = 4;

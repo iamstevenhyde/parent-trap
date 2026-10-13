@@ -372,3 +372,17 @@ button.big { font-size: 22px; padding: 14px 32px; } button.danger { border-color
 .lot .ally.joint { border-color: var(--green); color: var(--green); } .lot .ally-toggle { margin-top: 8px; }
 .lot .ally .allywith, .lot .ally .bidamt { max-width: 100%; }
 p.allyexp { font-size: 14px; color: var(--sub); border-left: 3px solid var(--amber); padding-left: 8px; }
+
+/* Midjourney scene art, 2026-10-12 */
+.lot .ally-art { display: block; width: 100%; height: 84px; object-fit: cover; border-radius: 4px; margin: 0 0 6px; }
+img.lastcall-art { display: block; width: 100%; max-height: 110px; object-fit: cover; border-radius: 8px; margin: 0 0 8px; }
+.pj-title .pj-lastcall { height: 40px; width: auto; border-radius: 6px; margin-right: 14px; vertical-align: middle; }
+.pj-lobby .pj-lobby-art { display: block; margin: 0 auto 8px; height: 190px; max-width: 100%; width: auto; border-radius: 10px; object-fit: cover; }
+.pj-standings .pj-winner-art { display: block; flex: none; margin: 0 auto 6px; height: 110px; min-height: 110px; max-width: 100%; width: auto; border-radius: 10px; object-fit: cover; }
+.auc-art.curse { object-position: 60% 50%; }
+.rp-arow img.curse-mini { height: 26px; width: 39px; object-fit: cover; border-radius: 4px; margin-left: 8px; vertical-align: middle; } .rp-alist.dense .rp-arow img.curse-mini { height: 20px; width: 30px; }
+.evcard img.curse-card { display: block; width: 100%; max-height: 96px; object-fit: cover; border-radius: 6px; margin-top: 8px; }
+
+/* phone width: long banners scroll inside a capped box so the zones pane keeps room (2026-10-12) */
+@media (max-width: 640px) { .banner { max-height: 6.5em; overflow: auto; } .stepbar .stepnow { max-height: 6.5em; overflow: auto; } }
+@media (max-width: 640px) { .page-team, .page-team #app { height: auto; overflow: visible; } .teamapp { height: auto; min-height: 100vh; } .teamapp .zones { flex: none !important; min-height: 0; } .teamapp .zone { max-height: none; overflow: visible; } }

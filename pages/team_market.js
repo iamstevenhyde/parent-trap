@@ -4,7 +4,7 @@
 
 import { h, fmtM, mmss } from './util.js';
 import { gl } from './glossary.js';
-import { icon, IND, artUrl } from './art.js';
+import { icon, IND, artUrl, SCENE } from './art.js';
 import { attentionUsed } from './roles.js';
 import { STEPS, leadsLot, shareOfLot } from './flow.js';
 
@@ -63,13 +63,15 @@ function maxLine(ctx, l, lead, own) {
 function allyBox(ctx, l, lead, own) {
   const { view, ui, market } = ctx, tid = view.teamId, ok = ctx.editable('market') && market.open, fee = 1 + view.feeRate;
   const out = [], props = (market.proposals || []).filter(p => p.lot === l.key);
+  const pic = () => h('img.ally-art', { src: SCENE.alliance, alt: '', loading: 'lazy' });
   if (lead && l.high.ally) {
     const other = l.high.team === tid ? l.high.ally : l.high.team;
-    out.push(h('p.ally.joint', ['Alliance: you and ', h('b', teamName(ctx, other)), ' lead at ' + fmtM(l.price) + '. You each pay ' + fmtM(l.price / 2) + ' plus the deal fee and each own half.']));
+    out.push(pic(), h('p.ally.joint', ['Alliance: you and ', h('b', teamName(ctx, other)), ' lead at ' + fmtM(l.price) + '. You each pay ' + fmtM(l.price / 2) + ' plus the deal fee and each own half.']));
   }
   for (const p of props.filter(x => x.to === tid)) {
     const stale = lead || (l.fixed ? !!l.high : p.amount < l.next - 1e-9), lim = coLimit(ctx, l, p.from), over = lim !== null && p.amount > lim + 1e-9;
     out.push(h('div.ally.invite' + (stale ? '.stale' : ''), [
+      pic(),
       h('p', [h('b', p.fromName), ' invites you to bid together on ' + l.name + ' at ' + fmtM(p.amount) + '. You would each pay ' + fmtM(p.amount / 2) + ' (' + fmtM(Math.ceil(p.amount / 2 * fee)) + ' with the deal fee) and each own half. ' + (stale && !lead ? 'The price has moved past this offer, so ask ' + p.fromName + ' to invite you again.' : '')]),
       over && !stale ? h('p.ack.bad.cashwarn', 'Your half is more than you can safely afford. The most the two of you can bid together on this company right now is ' + fmtM(lim) + '.') : null,
       h('button.bid.go', { type: 'button', disabled: !ok || stale || over, title: over ? CANT : '', onclick: () => ctx.coJoin(l.key, p.from) }, 'Join: bid together at ' + fmtM(p.amount)),
@@ -79,13 +81,14 @@ function allyBox(ctx, l, lead, own) {
     out.push(h('p.ally.sent', 'Invitation sent to ' + p.toName + ' at ' + fmtM(p.amount) + '. It only counts if they join, and until they do nothing is bid.' + (!l.fixed && p.amount < l.next - 1e-9 ? ' The price has moved past it, so send a new one.' : '')));
   }
   const others = view.teams.filter(t => t.id !== tid && t.id !== l.seller);
-  if (!own && !lead && ok && others.length) {
+  if (!own && !lead && ok && others.length && ctx.game.round < 5) {
     const open = !!(ui.allyOpen || {})[l.key];
     const sel = (ui.allyWith || {})[l.key] || others[0].id, lim = coLimit(ctx, l, sel), f = ui['ca' + l.key] || '';
     out.push(h('button.ally-toggle', { type: 'button', 'aria-expanded': open ? 'true' : 'false', title: 'Bid together with another team: you each pay half and each own half.', onclick: () => { (ui.allyOpen = ui.allyOpen || {})[l.key] = !open; ctx.rerender(); } }, open ? 'Ally: bid together (hide)' : 'Ally: bid together'));
     if (open) {
       const amtIn = h('input.bidamt', { type: 'number', min: l.fixed ? l.opening : l.next, step: l.step || 5, placeholder: l.fixed ? 'Fixed price ' + Math.round(l.opening) : 'Amount (at least ' + Math.round(l.next) + ')', value: f, disabled: l.fixed, 'aria-label': 'Joint bid amount in millions for ' + l.name, oninput: e => { ui['ca' + l.key] = e.target.value; } });
       out.push(h('div.ally.form', [
+        pic(),
         h('label', ['Partner team ', h('select.allywith', { 'aria-label': 'Partner team', onchange: e => { (ui.allyWith = ui.allyWith || {})[l.key] = e.target.value; ctx.rerender(); } }, others.map(t => h('option', { value: t.id, selected: t.id === sel }, t.name)))]),
         amtIn,
         h('button.bid', { type: 'button', onclick: () => {
@@ -163,9 +166,10 @@ export function renderLiveMarket(ctx) {
     else if (game.round === 1 && ctx.openingResult) zone.append(h('p.banner.openingres', ctx.openingResult.length ? 'Opening auction: you won ' + ctx.openingResult.map(r => r.name + ' for ' + fmtM(r.price) + (r.together ? ' together with another team (you paid half)' : '')).join(' and ') + '. It is already one of your businesses. What nobody won is on the side below.' : 'Opening auction: you won nothing. You can still bid on what is left below, or order a build. If you still have no new company at the end of round 1, the game orders one for you, and it arrives in round 3 at 70% strength.'));
     else if (game.round === 1) zone.append(h('p.sub', 'Round 1: if you have no new company by the end of the round, the game orders a build for you. It arrives in round 3 at 70% strength.'));
     if (view.drawn > 0.5) zone.append(h('p.warnline', 'You already owe ' + fmtM(view.drawn) + ' on your credit line. If cash runs out at the end of the round, the game sells your weakest business, even one you just won.'));
-    if (game.round >= 4) zone.append(h('p.sub', 'New builds were only open in rounds 1 to 3, because a build takes 2 rounds to arrive and a later one would land after the game ends. You can still buy a company here: ' + (game.round === 5 ? 'this is the last market, and what you win counts in the final standings.' : 'anything left unsold stays for sale in round 5.')));
-    zone.append(h('p.sub', 'Each company starts at half its listed value. To lead, beat the current price by one step (about 2.5% of listed value, never under $5M). Bids above 3 times listed value are refused. A bid in the last 8 seconds adds 8 seconds. When the market closes, each leader pays its price plus the deal fee. Owning more businesses costs more to run each round, especially if they are unrelated. That running cost is counted when the game checks whether you can afford a bid.'));
-    if (view.teams.filter(t => t.id !== view.teamId).length) zone.append(h('p.sub.allyexp', 'Alliance: on any company you can use "Ally: bid together" to invite another team. If they join, you lead at that price as a pair, each paying half (plus your own deal fee) and each owning half the company and half its value. Nothing is bid and no cash is held until they join, and it ends when the market closes: there is no joint venture after that.'));
+    if (game.round === 4) zone.append(h('p.sub', 'Round 4 is the last auction: round 5 has no auction. New builds were only open in rounds 1 to 3, because a build takes 2 rounds to arrive and a later one would land after the game ends. A company another team lists in round 4 can still be bought in round 5 at its listed price.'));
+    if (game.round >= 5) zone.append(h('p.sub', 'Round 5 has no auction. Only a company another team listed in round 4 is here, at its listed price, and the first team to take it gets it. New builds were only open in rounds 1 to 3, because a build takes 2 rounds to arrive and a later one would land after the game ends.'));
+    zone.append(h('p.sub', game.round >= 5 ? 'A company another team listed has a fixed price. The first team to take it gets it, and pays that price plus the deal fee when the market closes. Owning more businesses costs more to run each round, especially if they are unrelated, and that running cost is counted when the game checks whether you can afford it.' : 'Each company starts at half its listed value. To lead, beat the current price by one step (about 2.5% of listed value, never under $5M). Bids above 3 times listed value are refused. A bid in the last 8 seconds adds 8 seconds. When the market closes, each leader pays its price plus the deal fee. Owning more businesses costs more to run each round, especially if they are unrelated. That running cost is counted when the game checks whether you can afford a bid.'));
+    if (game.round < 5 && view.teams.filter(t => t.id !== view.teamId).length) zone.append(h('p.sub.allyexp', 'Alliance: on any company you can use "Ally: bid together" to invite another team. If they join, you lead at that price as a pair, each paying half (plus your own deal fee) and each owning half the company and half its value. Nothing is bid and no cash is held until they join, and it ends when the market closes: there is no joint venture after that.'));
   } else {
     const won = ctx.plan.bids.map(b => { const l = market.lots.find(x => x.key === b.lot); return (l ? l.name : b.lot) + ' for ' + fmtM(b.amount) + (b.ally ? ' together with ' + teamName(ctx, b.ally) + ' (you pay half)' : ''); });
     zone.append(h('p.banner.wonsum', won.length ? 'You won ' + won.join(', ') + '.' : 'You won nothing in the market.' + (game.round === 1 ? ' A team with no new company at the end of round 1 gets a build that arrives in round 3 at 70% strength.' : '')));

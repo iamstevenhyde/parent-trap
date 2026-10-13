@@ -40,8 +40,9 @@ const AI_POLICIES = ['FOCUSED_TWO', 'RELATED_THREE', 'ACQUIRER_HEAVY', 'UNRELATE
 export function createGame(seed, teamCount = 8, opts = {}) {
   if (!(teamCount >= 1 && teamCount <= MAX_TABLES)) throw new Error('The Parent Trap supports 1 to ' + MAX_TABLES + ' tables (asked for ' + teamCount + ').');
   const cfg = { ...CONFIG, ...(opts.cfg || {}) };
+  if (opts.liveAuction && cfg.AI_FLOOR) cfg.BOT_CASH = cfg.FLOOR_BOT_CASH;
   const roster = rosterFor(teamCount, cfg);          // the base roster for 8 tables or fewer; sister companies and more lots above that
-  if (teamCount > 8) { cfg.ROUND1_LOTS = roster.round1Lots; cfg.LOTS_R2 = roster.lotsR2; cfg.LOTS_R3 = roster.lotsR3; cfg.LOTS_R4_MAX = roster.lotsR4; cfg.LOTS_R5_MAX = roster.lotsR5; }
+  if (teamCount > 8) { cfg.ROUND1_LOTS = roster.round1Lots; cfg.LOTS_R2 = roster.lotsR2; cfg.LOTS_R3 = roster.lotsR3; cfg.LOTS_R4_MAX = roster.lotsR4; }
   const inheritedSet = new Set(roster.inheritance.slice(0, teamCount).flatMap(r => r.companies));
   const sched = buildSchedule(seed, cfg);
   const world = buildWorld(sched, cfg, roster.companies);
@@ -79,7 +80,7 @@ export function createGame(seed, teamCount = 8, opts = {}) {
     for (const { u, w } of heldUnits(state, id)) openSpell(state, id, u, w, 1);
     t.ev1 = evOf(state, id);
   }
-  // Pool queue for rounds 2 and 3 (and leftovers for rounds 4 and 5): every unit nobody owns that is not a round-1 lot.
+  // Pool queue for rounds 2 and 3 (and leftovers for round 4): every unit nobody owns that is not a round-1 lot.
   const free = state.unitIds.filter(id => !state.units[id].owners.length && !cfg.ROUND1_LOTS.includes(id));
   state.poolQueue = keyedShuffle(free, seed, 'pool_order');
   snapshot(state, 0);
@@ -101,10 +102,10 @@ export function openRound(state, round) {
   else if (round === 2 || round === 3) {
     const n = round === 2 ? cfg.LOTS_R2 : cfg.LOTS_R3;
     ids.push(...state.poolQueue.splice(0, n));
-  } else if (round === 4 || round === 5) {
-    // rounds 4 and 5 list whatever nobody owns (unsold lots, units sold to the market); round 5 is the last market (2026-10-12)
+  } else if (round === 4) {
+    // round 4 lists whatever nobody owns (unsold lots, units sold to the market). Round 5 lists no auction lots: only team listings (below).
     const left = state.unitIds.filter(id => !state.units[id].owners.length && !state.units[id].built);
-    ids.push(...keyedShuffle(left, state.seed, 'r' + round + '_lots').slice(0, round === 4 ? cfg.LOTS_R4_MAX : cfg.LOTS_R5_MAX));
+    ids.push(...keyedShuffle(left, state.seed, 'r4_lots').slice(0, cfg.LOTS_R4_MAX));
   }
   state.lots = ids.map(id => lotFor(state, id));
   // team-to-team listings that become visible this round

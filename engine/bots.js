@@ -104,7 +104,7 @@ function cashAvail(state, id) { return budgetOf(state, id); }
 const BOTS = {
   B1(state, id) {
     const cfg = state.cfg, dec = newDec('Hype Capital chases AI platforms.'), t = state.round;
-    if (t <= 5) {
+    if (t <= 4) {
       const lots = lotsOf(state), ai = lots.filter(l => unitOfLot(state, l).ind === 'ai'), rest = lots.filter(l => unitOfLot(state, l).ind !== 'ai');
       for (const l of ai) {
         const bid = Math.min(cfg.B1_AI_MULT * sig(state, id, l), cfg.BOT_MAX_BID_SHARE * l.catalog, cashAvail(state, id));
@@ -122,8 +122,8 @@ const BOTS = {
     return finish(state, id, dec);
   },
   B2(state, id) {
-    const cfg = state.cfg, dec = newDec('Ledger and Sons wait with cash and buy in round 4 (round 5 if they missed).'), t = state.round;
-    if (t === 4 || (t === 5 && !state.auctions.some(a => a.winners.includes(id)))) {   // waits for round 4; round 5 is its second chance if it bought nothing
+    const cfg = state.cfg, dec = newDec('Ledger and Sons wait with cash and buy in round 4.'), t = state.round;
+    if (t === 4) {
       const top = [...lotsOf(state)].sort((a, b) => sig(state, id, b) / b.catalog - sig(state, id, a) / a.catalog).slice(0, 2);
       for (const l of top) {
         dec.actions.push({ type: 'deepdive', lot: l.key });
@@ -149,7 +149,7 @@ const BOTS = {
   },
   B4(state, id) {
     const cfg = state.cfg, dec = newDec('Gemstone Roll-Up buys cannabis.'), t = state.round;
-    if (t <= 5) {
+    if (t <= 4) {
       for (const l of lotsOf(state)) {
         const u = unitOfLot(state, l);
         if (u.ind === 'cannabis') {
@@ -263,7 +263,7 @@ export const ARCHETYPES = {
   },
   ACQUIRER_HEAVY(state, id) {
     const cfg = state.cfg, t = state.round, dec = newDec('Buy something every round.');
-    if (t <= 5) {
+    if (t <= 4) {
       const lots = state.lots.filter(l => !(l.seller === id));
       const top = lots.length ? bestRatio(state, id, lots.filter(l => l.kind === 'auction' || sig(state, id, l) * cfg.ACQUIRER_BID >= l.price).length ? lots.filter(l => l.kind === 'auction' || sig(state, id, l) * cfg.ACQUIRER_BID >= l.price) : lots) : null;
       if (top) {
