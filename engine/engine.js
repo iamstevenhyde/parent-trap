@@ -11,7 +11,7 @@ import { buildSchedule, chainById } from './schedule.js';
 import {
   CO, buildWorld, trueTheta, makeUnit, valueOf, saOf, estimate, heldUnits, reservedFor, budgetOf,
 } from './model.js';
-import { CAPABILITIES, emit, emptyLedger, openSpell, evOf, normalizeDecision, applyDeepDives } from './core.js';
+import { CAPABILITIES, emit, emptyLedger, openSpell, evOf, normalizeDecision, applyDeepDives, post, money } from './core.js';
 
 function newTeam(id, isBot, name, cfg, seat) {
   return {
@@ -225,3 +225,23 @@ export { chainById, valueOf, saOf, CAPABILITIES, evOf, emit, normalizeDecision }
 import { snapshot } from './resolve.js';
 export { resolveRound, snapshot, clearOpeningAuction } from './resolve.js';
 export { score, counterfactual, leaderboard } from './scoring.js';
+
+// ---------- host cash grant (between rounds) ----------
+// The instructor gives every human table the same cash after a round is worked out and before the next one opens. Seats played by the
+// engine (AI seats and bots) are never touched. The grant is a logged event, and the host stores {after, amount} in the game settings so
+// rebuilding the game from the saved plans replays it at the same point. It is posted to ledger term T1, so the score decomposition still sums.
+export const GRANT_MAX = 500;
+export function grantCash(state, amount) {
+  if (state.phase !== 'resolved') throw new Error('A host grant can only be given between rounds, after a round is worked out.');
+  if (!(Number.isFinite(amount) && amount > 0 && amount <= GRANT_MAX)) throw new Error('A host grant must be above 0 and at most ' + GRANT_MAX + '.');
+  for (const id of state.teamIds) {
+    const t = state.teams[id];
+    if (t.isBot) continue;
+    t.cash += amount; post(state, id, 'T1', amount);
+    t.grants = (t.grants || 0) + amount;
+    const snap = state.snapshots[state.round] && state.snapshots[state.round].teams[id];
+    if (snap) { snap.cash += amount; snap.ev += amount; }
+    emit(state, { type: 'host_grant', team: id, amount, text: 'Host grant: +' + money(amount) + '. Your instructor added cash to every team.' });
+  }
+  return state;
+}

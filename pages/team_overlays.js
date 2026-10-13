@@ -12,10 +12,11 @@ const ORDER = [
   ['complexity', ['complexity_charged']],
   ['capability', ['capability_earned', 'capability_progress']],
   ['trouble', ['forced_sale', 'receivership']],
+  ['host', ['host_grant']],
 ];
 const GLOSS = { winners_curse: 'winners_curse', synergy_fired: 'synergy', anergy_fired: 'anergy', synergy_not_earned: 'integrate', complexity_charged: 'complexity', capability_earned: 'capability', capability_progress: 'capability', receivership: 'receivership', turnaround_worked: 'turnaround', turnaround_failed: 'turnaround', deep_dive: 'deepdive' };
 const BAD = new Set(['winners_curse', 'auction_lost', 'anergy_fired', 'complexity_charged', 'forced_sale', 'receivership', 'turnaround_failed', 'synergy_not_earned']);
-const GOOD = new Set(['auction_won', 'good_buy', 'synergy_fired', 'capability_earned', 'turnaround_worked']);
+const GOOD = new Set(['host_grant', 'auction_won', 'good_buy', 'synergy_fired', 'capability_earned', 'turnaround_worked']);
 
 function headBody(e) {
   const text = e.text || '';
@@ -30,6 +31,7 @@ function numberFor(e) {
     case 'auction_won': case 'good_buy': case 'winners_curse': return e.price !== undefined ? 'paid ' + fmtM(e.price) : '';
     case 'complexity_charged': case 'synergy_fired': case 'anergy_fired': return e.amount !== undefined ? fmtM(Math.abs(e.amount)) : '';
     case 'shock_team_impact': return e.amount !== undefined ? fmtSigned(e.amount) : '';
+    case 'host_grant': return e.amount !== undefined ? '+' + fmtM(e.amount) : '';
     case 'divest_market': return e.proceeds !== undefined ? fmtM(e.proceeds) : '';
     default: return '';
   }

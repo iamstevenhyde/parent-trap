@@ -70,7 +70,7 @@ function tick() {
   // Advance on timers is opt-in. With it off the clock only counts; the instructor presses Advance.
   if (auto && g.clock && !g.clock.paused && g.clock.endsAt && Date.now() > g.clock.endsAt + 300 && ['news', 'market', 'decide'].includes(g.phase)) { host.advance(pubLen()).then(refresh); return; }
   const phaseKey = g.phase + ':' + g.round; if (phaseKey !== lastPhaseKey) { lastPhaseKey = phaseKey; lastResultStep = Date.now(); }
-  if (auto && g.phase === 'results' && Date.now() - lastResultStep > RESULT_STEP_SECONDS * 1000) { lastResultStep = Date.now(); host.advance(pubLen()).then(refresh); }
+  if (auto && !A.grantAmt && g.phase === 'results' && Date.now() - lastResultStep > RESULT_STEP_SECONDS * 1000) { lastResultStep = Date.now(); host.advance(pubLen()).then(refresh); }
   if ((set.autoResolve !== false) && (g.phase === 'decide' || g.phase === 'market')) {
     const seated = seatedTeamIds(), locked = lockedIds();
     if (seated.length && seated.every(t => locked.includes(t))) {
@@ -142,6 +142,22 @@ function recommended(g, seated, locked) {
     default: return '';
   }
 }
+// Give every human team cash between rounds (results phase, rounds 1 to 4). Presets fill the box; the button asks once before it gives.
+function grantPanel() {
+  const host = A.host, g = host.game, given = host.grantsGiven();
+  if (g.phase !== 'results' || g.round < 1 || g.round >= 5) return given.length ? h('p.sub#grantlog', 'Host grants so far: ' + given.map(x => '+$' + x.amount + 'M after round ' + x.after).join(', ') + '.') : null;
+  const humans = host.state.teamIds.length, amt = h('input#grantamt', { type: 'number', min: 1, max: 500, step: 5, value: A.grantAmt || '', placeholder: '$M', oninput: e => { A.grantAmt = e.target.value; } });
+  const preset = n => h('button.grantpreset', { type: 'button', onclick: () => { A.grantAmt = String(n); amt.value = String(n); } }, '$' + n + 'M');
+  return h('div.row#grantbox', [h('b', 'Give cash to every human team:'), preset(25), preset(50), preset(100), amt,
+    h('button#grantgo', { type: 'button', onclick: async () => {
+      const n = Number(A.grantAmt);
+      if (!(n > 0 && n <= 500)) { toast('Enter an amount from 1 to 500.'); return; }
+      if (!confirm('Give $' + n + 'M to each of the ' + humans + ' human teams? AI seats get nothing. This cannot be undone.')) return;
+      try { await host.grantAll(n); A.grantAmt = ''; toast('Gave $' + n + 'M to ' + humans + ' teams.'); } catch (e) { toast(e.message || String(e)); }
+      await refresh();
+    } }, 'Give to all human teams'),
+    h('span.sub', 'Between rounds only. Turn off "Advance on timers" first if results move on too fast.' + (given.length ? ' Given so far: ' + given.map(x => '+$' + x.amount + 'M after round ' + x.after).join(', ') + '.' : ''))]);
+}
 function controlsPanel() {
   const host = A.host, g = host.game, set = g.settings || {};
   const seated = seatedTeamIds(), locked = lockedIds();
@@ -168,6 +184,7 @@ function controlsPanel() {
       setting('requireWhy', 'Ask for a why sentence (off by default)', false),
       h('span.sub', 'Live auction: ' + (host.live ? 'on' : 'off') + ' (set when the game was created)'),
     ]),
+    grantPanel(),
     h('p#lockstatus', g.phase === 'decide' || g.phase === 'market' ? 'Lock status: ' + locked.length + '/' + seated.length + '. ' + unlockedTeams.map(t => t.name + ' not locked (' + describeSaved(t.team_id) + ')').join('. ') : ''),
     A.decisions.some(d => d.engine_error) ? h('p.warnline', A.decisions.filter(d => d.engine_error).map(d => d.team_id + ': ' + d.engine_error).join(' ')) : null,
     det('more', 'More controls', h('div.row', [

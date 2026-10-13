@@ -4,7 +4,7 @@
 // The engine is deterministic, so the whole game can be rebuilt from seed + team count + bot count + the stored plans
 // (rebuild()). That is how an admin reload, or a second admin laptop, picks the game up where it was.
 
-import { createGame, openRound, submitDecisions, validateDecisions, resolveRound, clearOpeningAuction } from '../engine/engine.js';
+import { createGame, openRound, submitDecisions, validateDecisions, resolveRound, clearOpeningAuction, grantCash, GRANT_MAX } from '../engine/engine.js';
 import { applyDeepDives } from '../engine/core.js';
 import { estimate } from '../engine/model.js';
 import { buildTeamView, buildPublic, buildResult, buildFinal, exportLog } from './views.js';
@@ -118,7 +118,11 @@ export class Host {
         this.state.liveBotBids = mk && mk.final ? mk.final.botBids : {};
         if (r === g.round && g.phase === 'market') { this.market = mk ? restoreMarket(this.state, mk) : openMarket(this.state); this.state.liveBotBids = undefined; }
       }
-      if (done) { this._submitAll(r, rows); resolveRound(this.state); } else this._reapplyDives(r, rows);
+      if (done) {
+        this._submitAll(r, rows); resolveRound(this.state);
+        // host cash grants given after this round was worked out replay here, in the order they were given
+        for (const gr of ((g.settings || {}).grants || [])) if (gr.after === r) grantCash(this.state, gr.amount);
+      } else this._reapplyDives(r, rows);
     }
     if (this.live && g.phase === 'decide') this.winBids = Object.fromEntries(decs.filter(d => d.round === g.round).map(d => [d.team_id, (d.market || {}).bids || []]));
     this.sentSeq = this.state.events.length;
@@ -496,6 +500,30 @@ export class Host {
   pause() { return this.run(async () => { const c = this.game.clock; if (!c || c.paused || !c.endsAt) return; await this.bumpRev({ clock: { ...c, paused: true, remaining: Math.max(0, c.endsAt - Date.now()), endsAt: null } }); }); }
   resume() { return this.run(async () => { const c = this.game.clock; if (!c || !c.paused) return; await this.bumpRev({ clock: { ...c, paused: false, endsAt: Date.now() + c.remaining, remaining: null } }); }); }
   addTime(sec) { return this.run(async () => { const c = this.game.clock; if (!c) return; await this.bumpRev({ clock: c.paused ? { ...c, remaining: c.remaining + sec * 1000 } : { ...c, endsAt: c.endsAt + sec * 1000 } }); }); }
+
+  // Give every human table the same cash between rounds (results phase, rounds 1 to 4). AI seats and bots are untouched.
+  // The grant is saved as {after, amount} in the game settings, so rebuild() replays it right after that round is worked out.
+  grantAll(amount) {
+    return this.run(async () => {
+      amount = Number(amount);
+      const r = this.state.round;
+      if (this.game.phase !== 'results' || r < 1 || r >= 5) throw new Error('Cash can be given between rounds, while the results of rounds 1 to 4 are showing.');
+      if (!(Number.isFinite(amount) && amount > 0 && amount <= GRANT_MAX)) throw new Error('Enter an amount from 1 to ' + GRANT_MAX + '.');
+      grantCash(this.state, amount);
+      const grants = [...((this.game.settings || {}).grants || []), { after: r, amount, at: new Date().toISOString() }];
+      this.game = await this.store.patchGame(this.gid, { settings: { ...(this.game.settings || {}), grants } });
+      await this.publishEvents();
+      for (const tid of this.state.teamIds) {
+        const old = (await this.store.getSnapshots(this.gid, { kind: 'result', round: r, teamId: tid }))[0];
+        if (!old) continue;
+        const data = { ...old.data, events: [...old.data.events, { type: 'host_grant', team: tid, amount, text: 'Host grant: +$' + amount + 'M. Your instructor added cash to every team.' }] };
+        await this.store.putSnapshot(this.gid, r, 'result', tid, data);
+      }
+      await this.publishViews();
+      await this.bumpRev();
+    });
+  }
+  grantsGiven() { return ((this.game && this.game.settings) || {}).grants || []; }
 
   unlockTeam(tid, who = 'Admin') {
     return this.run(async () => {

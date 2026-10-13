@@ -72,7 +72,7 @@ export function buildTeamView(state, tid, wins = []) {
   return {
     v: 1, teamId: tid, name: t.name, round, seed: state.seed, liveAuction: !!state.opts.liveAuction,
     obl: state.opts.liveAuction ? obligations(state, tid, { bids: wins }) : { cc: 0, fin: 0, total: 0 },
-    cash: t.cash, drawn: t.drawn, line: lineAvail(state, t), budget: budgetOf(state, tid), feeRate: feeRate(state, tid), recLoan: t.recLoan,
+    hostGrant: t.grants || 0, cash: t.cash, drawn: t.drawn, line: lineAvail(state, t), budget: budgetOf(state, tid), feeRate: feeRate(state, tid), recLoan: t.recLoan,
     receivership: !!t.receivership, attMax: cfg.ATT_PER_ROUND, ev: evOf(state, tid), prevRank: prev && prev.teams[tid] ? prev.teams[tid].rank : null,
     ofTeams: state.teamIds.length + state.botIds.length,
     capabilities: { ...t.capabilities }, uses: { ...t.uses }, capLabels: CAP_LABEL, capList: CAPABILITIES,

@@ -278,6 +278,7 @@ function render() {
   }
   root.append(renderTopBar(ctx), renderSteps(ctx));
   if (ctx.opening) root.append(h('p.banner.opening', 'Opening auction. Every team bids for its third company now, before round 1 begins. Your capital requests, corporate actions and the lock open when the auction closes. A Deep dive on a company for sale works now. There are two prizes at the end: Biggest parent for the highest enterprise value, and Best parent for the most value added over what the businesses would be worth on their own.'));
+  if (ctx.view.hostGrant > 0) root.append(h('p.banner.hostgrant', 'Host grant: your instructor has added ' + fmtM(ctx.view.hostGrant) + ' to your cash so far.'));
   if (ctx.live && ['news', 'market', 'decide'].includes(g.phase) && ctx.view.obl && ctx.view.obl.total > ctx.view.budget + 1e-9) root.append(h('p.banner.insolvent', 'Warning: about ' + fmtM(Math.ceil(ctx.view.obl.total)) + ' of interest and running costs come due at the end of this round, and your cash plus credit line is ' + fmtM(Math.floor(ctx.view.budget)) + '. Unless your businesses earn enough this round, the game will sell your weakest business. The market will not let you bid, and the lock will not accept new spending.'));
   // role rotation banner (spec 01 section 13): shown during the news phase when the job changed since last round
   const key = 'pt_role_' + S.gid + '_' + S.seat.id, last = safeGet(key);
