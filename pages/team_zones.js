@@ -46,7 +46,7 @@ export function renderTopBar(ctx) {
     h('div.tb-timer.' + tcls + (game.clock && game.clock.paused ? '.paused' : ''), [h('b#timer', game.clock ? (game.clock.paused ? 'PAUSED ' : '') + mmss(left) + ' left' : '--:--'), h('span.sub', phaseWord)]),
     h('div.tb-cash', [
       h('div.meterbar', { title: 'Cash plus credit line, with what your plan reserves' }, [h('i.res', { style: 'width:' + resPct + '%' })]),
-      h('span.sub', view ? ['Cash ' + fmtM(cash) + ' + ', gl('creditline'), ' ' + fmtM(line) + ' (borrowing) = ' + fmtM(total) + ' to use. ', gl('reserved'), ': ' + fmtM(m.total) + '. ', gl('free'), ': ' + fmtM(m.free) + '.'] : '')]),
+      h('span.sub', view ? ['Cash ' + fmtM(cash) + ' + ', gl('creditline'), ' ' + fmtM(line) + ' (borrowing) = ' + fmtM(total) + ' to use. ', gl('reserved'), ': ' + fmtM(m.total) + (m.obl > 0 ? ' (includes ' + fmtM(m.obl) + ' due at end of round)' : '') + '. ', gl('free'), ': ' + fmtM(m.free) + '.'] : '')]),
     h('div.tb-att', [h('div.adots', dots), h('span.sub', [gl('attention'), ': ' + attLeft + ' of ' + (view ? view.attMax : 3) + ' attention left'])]),
     h('div.tb-role', [ROLES_ON ? h('span.badge', { title: role ? role.hint : '' }, role ? role.label : 'No seat') : null, h('span.sub', ctx.seatName + ' (you)')]),
   ]);
