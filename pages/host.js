@@ -18,6 +18,7 @@ import { MARKET_SECONDS, SNIPE_MS, openMarket, restoreMarket, placeBid, proposeC
 export const RESULT_STEP_SECONDS = 12;   // auto-advance only: how long each results reveal stays up
 export const DECIDE_SECONDS = { 1: 360, 2: 360, 3: 360, 4: 480, 5: 300 };
 export const OPENING_SECONDS = 240;   // the starting auction: only the auction is open, then round 1 opens with the lots nobody won on the side
+export const OPENING_MIN_MS = 5000;   // the opening auction cannot be closed in its first five seconds
 export const DEFAULT_NAMES = ['Alpine Holdings', 'Frontier Capital', 'Summit Partners', 'Rangeview Group', 'Bitterroot Capital', 'Sawtooth Holdings', 'Teton Ventures', 'Wasatch Partners', 'Sagebrush Capital', 'Bighorn Group'];
 
 export function newGameRow({ seed, teams, bots }, opts = {}) {
@@ -356,6 +357,10 @@ export class Host {
   closeOpeningNow() {
     return this.run(async () => {
       if (!this.inOpening || !this.market) return;
+      // Class 10/13: the opening auction closed about a second after it opened (the Start press and a second press of the same button). A press in the
+      // first five seconds is ignored, whoever sent it (the instructor's button or the clock).
+      const ck = this.game.clock;
+      if (ck && ck.total && ck.endsAt && Date.now() - (ck.endsAt - ck.total * 1000) < OPENING_MIN_MS) return;
       await this._closeOpening();
     });
   }

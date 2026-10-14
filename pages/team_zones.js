@@ -182,9 +182,16 @@ function pickerFor(ctx, key) {
     if (!pairs.length) return h('div.picker', 'You need two businesses you fully own, with no Integrate project yet.');
     p.pair = p.pair || pairs[0].key;
     const cur = pairs.find(x => x.key === p.pair) || pairs[0];
+    // Class 10/13: 1 of 12 Integrate actions earned a synergy, because pairs were not checked first. A pair known not to fit cannot be added,
+    // and an unchecked pair offers the Deep dive first.
+    const doIntegrate = () => add({ type: 'integrate', a: cur.a, b: cur.b });
+    const buttons = cur.known
+      ? [h('button.go', { type: 'button', disabled: !cur.known.related, onclick: doIntegrate }, 'Add Integrate')]
+      : [h('button.go', { type: 'button', onclick: () => add({ type: 'deepdive', pair: [cur.a, cur.b] }) }, 'Add a Deep dive on this pair (1 attention)'),
+        h('button.ghost', { type: 'button', onclick: doIntegrate }, 'Integrate without checking')];
     form.append(select(pairs.map(x => [x.key, x.aName + ' and ' + x.bName]), v => { p.pair = v; ctx.rerender(); }, cur.key),
-      h('p.sub', 'Cost ' + fmtM(cur.cost) + '. ' + (cur.known ? (cur.known.related ? 'Your deep dive says they really share something.' : 'Your deep dive says they do not really share anything.') : 'Not checked yet. A Deep dive tells you if they really fit.')),
-      h('button.go', { type: 'button', onclick: () => add({ type: 'integrate', a: cur.a, b: cur.b }) }, 'Add Integrate'), cancel);
+      h('p.sub', 'Cost ' + fmtM(cur.cost) + '. ' + (cur.known ? (cur.known.related ? 'Your deep dive says they really share something.' : 'Your deep dive says they do not really share anything, so an Integrate would pay nothing and its cost would be lost.') : 'Not checked yet. Most unchecked pairs share nothing and the cost is lost, so check this pair with a Deep dive first.')),
+      ...buttons, cancel);
   } else if (key === 'turnaround') {
     const us = view.units.filter(u => u.canTurn && u.stress && !plan.actions.some(a => a.type === 'turnaround' && a.unit === u.id));
     if (!us.length) return h('div.picker', 'No business that is losing money can take a Turnaround right now (cooldown: one per business every two rounds, so wait one round after the last one).');

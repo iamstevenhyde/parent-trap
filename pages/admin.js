@@ -85,6 +85,8 @@ function createPanel() {
   return h('section.panel', [h('h2', 'New game'),
     h('div.row', [h('label', ['Seed ', seed]), h('span.sub', 'Always 20 seats. Seats nobody claims by Start are played by AI.'), h('label', [live, ' Live auction (off = sealed bids)']), h('label', [opening, ' Starting auction for the third company (needs the live auction)']), h('label', [why, ' Ask for a why sentence (off by default)']),
       h('button.go#create', { type: 'button', onclick: async () => {
+        if (A.creating) return;   // class 10/13: two games were created three seconds apart by one admin; the button now ignores a second press
+        A.creating = true;
         try {
           const host = new Host(A.store, null);
           const g = await host.createNew({ seed: seed.value ? Number(seed.value) : null, teams: 20, bots: 0, liveAuction: live.checked, requireWhy: why.checked, openingAuction: opening.checked });
@@ -94,7 +96,7 @@ function createPanel() {
         } catch (e) {
           A.msg = mode === 'live' ? 'LIVE MODE cannot create a game: ' + (e.message || e) + '. The Supabase tables are probably not set up yet (paste pages/schema.sql into the Supabase SQL editor). To test on this laptop with no Supabase, open admin.html?local=1 on localhost.' : 'Could not create the game: ' + (e.message || e);
           await refresh(); render();
-        }
+        } finally { A.creating = false; }
       } }, 'Create game')])]);
 }
 function openGames() {
@@ -175,7 +177,9 @@ function controlsPanel() {
       g.phase === 'lobby' && mode === 'local' && unseated.length ? h('button#demoseat', { type: 'button', onclick: async () => { const now = new Date().toISOString(); for (const t of unseated) await A.store.upsertSeat({ id: uid(10), game_id: A.gid, team_id: t.team_id, name: 'Demo ' + t.team_id, slot: 0, role_override: 'solo', secret: uid(10), removed: false, connected_at: now, last_seen: now }); await refresh(); } }, 'Seat all teams (demo)') : null,
       label && g.phase !== 'final' ? h('button.go.big#next', { type: 'button', disabled: waiting, onclick: async () => {
         if ((g.phase === 'decide' || (g.phase === 'market' && !host.inOpening)) && unlockedTeams.length && !confirm(unlockedTeams.length + ' teams have not locked. Their last saved plans will be used. Continue?')) return;
-        await host.advance(pubLen()); await refresh();
+        if (A.advBusy) return;   // a second press while the first is still working (class 10/13: Start and Close opening auction were one double press)
+        A.advBusy = true;
+        try { await host.advance(pubLen()); await refresh(); } finally { setTimeout(() => { A.advBusy = false; }, 1500); }
       } }, waiting ? 'Waiting for teams to join' : (g.phase === 'lobby' ? label : 'Advance: ' + label)) : null,
       g.phase !== 'lobby' && g.phase !== 'final' ? h('button.danger#end', { type: 'button', onclick: async () => { if (confirm('End the game now? The current round is worked out and the final standings show on the projector.')) { await host.endGame(); await refresh(); } } }, 'End game') : null,
     ]),
