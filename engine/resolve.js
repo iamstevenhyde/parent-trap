@@ -114,7 +114,7 @@ function autoBuild(state, ctx) {
     const held = heldUnits(state, id).filter(h => h.w === 1).map(h => h.u);
     const pick = cands.find(l => held.every(h => matrixSigma(state.units[l.unitId].ind, h.ind) >= 0)) || cands[0];
     d.builds.push({ lot: pick.key, auto: true });
-    emit(state, { type: 'auto_build', team: id, unit: pick.unitId, text: 'You won no company in round 1, so we ordered a build of ' + CO[state.units[pick.unitId].co].name + ' for you. It arrives in round ' + (1 + state.cfg.BUILD_DELAY) + ' at ' + Math.round(state.cfg.BUILD_STRENGTH * 100) + ' percent strength.' });
+    emit(state, { type: 'auto_build', team: id, unit: pick.unitId, text: 'You won no company in round 1, so the game ordered a build of ' + CO[state.units[pick.unitId].co].name + ' for you. This is the rule for every table that has no third company, and it was not your choice. It arrives in round ' + (1 + state.cfg.BUILD_DELAY) + ' at ' + Math.round(state.cfg.BUILD_STRENGTH * 100) + ' percent strength.' });
   }
 }
 
@@ -149,7 +149,7 @@ function applyActions(state, ctx) {
       const c = buildCostOf(state, id, lot.unitId);
       tm.cash -= c.actual;
       tm.cip.push({ co: state.units[lot.unitId].co, cost: c.actual, costBase: c.base, order: t, completeAfter: t + cfg.BUILD_DELAY - 1 });
-      emit(state, { type: 'build_ordered', team: id, unit: lot.unitId, cost: c.actual, text: 'You ordered a new ' + CO[state.units[lot.unitId].co].name + ' for ' + money(c.actual) + '. It arrives in round ' + (t + cfg.BUILD_DELAY) + ' at ' + Math.round(cfg.BUILD_STRENGTH * 100) + ' percent strength.' });
+      emit(state, { type: 'build_ordered', team: id, unit: lot.unitId, cost: c.actual, auto: !!b.auto, text: b.auto ? 'The game charged ' + money(c.actual) + ' from your cash for the new ' + CO[state.units[lot.unitId].co].name + ' it ordered for you. You did not order it. It arrives in round ' + (t + cfg.BUILD_DELAY) + ' at ' + Math.round(cfg.BUILD_STRENGTH * 100) + ' percent strength.' : 'You ordered a new ' + CO[state.units[lot.unitId].co].name + ' for ' + money(c.actual) + '. It arrives in round ' + (t + cfg.BUILD_DELAY) + ' at ' + Math.round(cfg.BUILD_STRENGTH * 100) + ' percent strength.' });
     }
     for (const a of d.actions) {
       if (a.type === 'integrate') {

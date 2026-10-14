@@ -361,14 +361,23 @@ function finalRows() { return P.final ? P.final.rows : []; }
 function standingsBody() {
   const rows = finalRows();
   if (!rows.length) return h('p.big', 'Working out the final standings...');
-  const byEV = [...rows].sort((a, b) => a.rankEV - b.rankEV), byPA = [...rows].sort((a, b) => a.rankPA - b.rankPA);
-  const col = (title, list, key) => h('section.stcol', [h('h2', title), ...list.map((r, i) => h('div.strow' + (r.isBot ? '.bot' : ''), { dataset: { team: r.id, ev: r.ev }, onclick: () => { P.autopsy = r.id; render(); } }, [
-    h('span.rk', i + 1), h('span.nm', r.name, r.isBot ? h('em.ai', 'AI') : null), h('span.vl', key === 'ev' ? fmtBig(r.ev) : fmtSigned(r.parentingAdvantage))]))]);
+  // Class 10/13: AI rows sat in both prize columns, and AI seats start with extra cash, so an AI team showed as the winner of both prizes.
+  // Prizes are for human tables only. AI rivals sit under a divider, with their value shown net of the extra starting cash.
+  const gift = rows.find(r => r.gift) ? rows.find(r => r.gift).gift : 0;
+  const col = (title, rank, key) => {
+    const humans = rows.filter(r => !r.isBot).sort((a, b) => a[rank] - b[rank]), ais = rows.filter(r => r.isBot).sort((a, b) => a[rank] - b[rank]);
+    const row = (r, rk) => h('div.strow' + (r.isBot ? '.bot' : ''), { dataset: { team: r.id, ev: r.ev }, onclick: () => { P.autopsy = r.id; render(); } }, [
+      h('span.rk', rk), h('span.nm', r.name, r.isBot ? h('em.ai', 'AI') : null),
+      h('span.vl', key === 'ev' ? fmtBig(r.ev) : fmtSigned(r.parentingAdvantage), r.isBot && key === 'ev' && r.gift ? h('em.net', ' (' + fmtBig(r.ev - r.gift) + ' without its extra starting cash)') : null)]);
+    return h('section.stcol', [h('h2', title), ...humans.map((r, i) => row(r, i + 1)),
+      ais.length ? h('p.aidiv', 'AI rivals, for comparison only. They are not eligible for the prizes' + (gift && key === 'ev' ? ' and they start with ' + fmtBig(gift) + ' extra cash' : '') + '.') : null,
+      ...ais.map(r => row(r, 'AI'))]);
+  };
   return h('div.pj-standings', [
     h('img.pj-winner-art', { src: SCENE.winner, alt: '' }),
     h('div.ctrl', [h('button.go', { type: 'button', onclick: startReplay }, '▶ Play replay'), h('span', 'Click a company for its autopsy.')]),
-    h('p.lede', 'Two prizes: Biggest parent goes to the highest enterprise value, and Best parent goes to the most value added over what the businesses would be worth on their own.'),
-    h('div.cols', [col('Biggest parent', byEV, 'ev'), col('Best parent', byPA, 'pa')]),
+    h('p.lede', 'Two prizes for the human tables: Biggest parent goes to the highest enterprise value, and Best parent goes to the most value added over what the businesses would be worth on their own.'),
+    h('div.cols', [col('Biggest parent', 'rankEV', 'ev'), col('Best parent', 'rankPA', 'pa')]),
   ]);
 }
 function startReplay() { P.replay = { round: 0, speed: 1, playing: true }; P.view = 'replay'; stepReplay(); render(); }

@@ -187,7 +187,7 @@ export function buildFinal(state) {
   return {
     v: 1,
     rows: rows.map(r => ({
-      id: r.team, name: teamName(state, r.team), isBot: state.teams[r.team].isBot, ev: r.ev, startingEV: r.startingEV,
+      id: r.team, name: teamName(state, r.team), isBot: state.teams[r.team].isBot, gift: state.teams[r.team].isBot ? Math.max(0, (state.cfg.BOT_CASH || 0) - (state.cfg.CASH0 || 0)) : 0, ev: r.ev, startingEV: r.startingEV,
       decomposition: r.decomposition, parentingAdvantage: r.parentingAdvantage, residual: r.residual, rankEV: r.rankEV, rankPA: r.rankPA, receivership: r.receivership,
     })),
     scoreCheck: log.scoreCheck, ids,
