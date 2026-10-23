@@ -8,7 +8,7 @@
 import { COMPANIES, INHERITANCE } from './data/companies.js';
 import { CO } from './model.js';
 
-export const MAX_TABLES = 20;
+export const MAX_TABLES = 26;
 const SUFFIX = ['', ' North', ' South', ' East', ' West', ' Valley', ' Ridge'];
 const baseOf = id => id.replace(/[a-z]+$/, '');
 

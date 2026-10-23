@@ -214,7 +214,7 @@ function auctionPanel() {
   });
   P.prevPrices = next;
   const led = m.lots.filter(l => l.high).length;
-  return h('aside.pj-board.pj-auction-slot.big' + (n > 12 ? '.dense3' : n > 7 ? '.dense2' : ''), [h('h3', 'LIVE AUCTION'), h('p.sub', led + ' of ' + n + ' have a leader. Highest price when time runs out takes the company.'), h('div.aulist', rows)]);
+  return h('aside.pj-board.pj-auction-slot.big' + (n > 24 ? '.dense3.dense4' : n > 12 ? '.dense3' : n > 7 ? '.dense2' : ''), [h('h3', 'LIVE AUCTION'), h('p.sub', led + ' of ' + n + ' have a leader. Highest price when time runs out takes the company.'), h('div.aulist', rows)]);
 }
 function worldBody() {
   const pub = pubOf(shownRound());
@@ -273,7 +273,7 @@ function marketBody() {
   const withBids = m.lots.filter(l => l.high).length;
   return h('div.pj-market', [
     h('div.mk-top', [h('h2', 'Live market: ' + m.lots.length + ' companies for sale'), h('span', withBids + ' have a leader. Highest price when time runs out takes the company.')]),
-    h('div.mk-grid' + (P.game.reveal && P.game.reveal.opening && m.lots.length <= 30 ? '.dense.opening' : m.lots.length > 22 ? '.dense.tiny.xl' : m.lots.length > 10 ? '.dense.tiny' : m.lots.length > 4 ? '.dense' : ''), cards),
+    h('div.mk-grid' + (P.game.reveal && P.game.reveal.opening && m.lots.length > 24 && m.lots.length <= 36 ? '.dense.opening.many' : m.lots.length <= 30 ? '.dense.opening' : m.lots.length > 22 ? '.dense.tiny.xl' : m.lots.length > 10 ? '.dense.tiny' : m.lots.length > 4 ? '.dense' : ''), cards),
   ]);
 }
 
@@ -373,7 +373,7 @@ function standingsBody() {
       ais.length ? h('p.aidiv', 'AI rivals, for comparison only. They are not eligible for the prizes' + (gift && key === 'ev' ? ' and they start with ' + fmtBig(gift) + ' extra cash' : '') + '.') : null,
       ...ais.map(r => row(r, 'AI'))]);
   };
-  return h('div.pj-standings', [
+  return h('div.pj-standings' + (rows.filter(r => !r.isBot).length > 10 ? '.crowd' : ''), [
     h('img.pj-winner-art', { src: SCENE.winner, alt: '' }),
     h('div.ctrl', [h('button.go', { type: 'button', onclick: startReplay }, '▶ Play replay'), h('span', 'Click a company for its autopsy.')]),
     h('p.lede', 'Two prizes for the human tables: Biggest parent goes to the highest enterprise value, and Best parent goes to the most value added over what the businesses would be worth on their own.'),

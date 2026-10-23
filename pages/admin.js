@@ -81,15 +81,15 @@ function tick() {
 
 // ---------- pieces ----------
 function createPanel() {
-  const seed = h('input#seed', { type: 'number', placeholder: 'blank = random' }), teams = { value: 20 }, bots = { value: 0 }, live = h('input#livecb', { type: 'checkbox', checked: true }), opening = h('input#opencb', { type: 'checkbox', checked: true }), why = h('input#whycb', { type: 'checkbox', checked: false });
+  const seed = h('input#seed', { type: 'number', placeholder: 'blank = random' }), teams = h('input#tables', { type: 'number', min: 1, max: 26, value: 20, style: 'width:4.5em' }), bots = { value: 0 }, live = h('input#livecb', { type: 'checkbox', checked: true }), opening = h('input#opencb', { type: 'checkbox', checked: true }), why = h('input#whycb', { type: 'checkbox', checked: false });
   return h('section.panel', [h('h2', 'New game'),
-    h('div.row', [h('label', ['Seed ', seed]), h('span.sub', 'Always 20 seats. Seats nobody claims by Start are played by AI.'), h('label', [live, ' Live auction (off = sealed bids)']), h('label', [opening, ' Starting auction for the third company (needs the live auction)']), h('label', [why, ' Ask for a why sentence (off by default)']),
+    h('div.row', [h('label', ['Seed ', seed]), h('label', ['Seats ', teams]), h('span.sub', 'Default 20 (a pair-sized class of 40 or more: set it to the number of pairs, up to 26). Seats nobody claims by Start are played by AI.'), h('label', [live, ' Live auction (off = sealed bids)']), h('label', [opening, ' Starting auction for the third company (needs the live auction)']), h('label', [why, ' Ask for a why sentence (off by default)']),
       h('button.go#create', { type: 'button', onclick: async () => {
         if (A.creating) return;   // class 10/13: two games were created three seconds apart by one admin; the button now ignores a second press
         A.creating = true;
         try {
           const host = new Host(A.store, null);
-          const g = await host.createNew({ seed: seed.value ? Number(seed.value) : null, teams: 20, bots: 0, liveAuction: live.checked, requireWhy: why.checked, openingAuction: opening.checked });
+          const g = await host.createNew({ seed: seed.value ? Number(seed.value) : null, teams: Math.max(1, Math.min(26, Number(teams.value) || 20)), bots: 0, liveAuction: live.checked, requireWhy: why.checked, openingAuction: opening.checked });
           safeSessionSet('pt_admin_' + g.id, g.admin_key); setParam('g', g.id); A.gid = g.id; A.host = host; A.msg = 'Game ' + g.id + ' created. Seed ' + g.seed + '.';
           A.store.subscribe(A.gid, debounce(refresh, 80));
           await refresh();
@@ -134,7 +134,7 @@ function det(key, title, child, defOpen = false, cls = '') {
 function recommended(g, seated, locked) {
   const host = A.host, r = g.round;
   switch (g.phase) {
-    case 'lobby': return seated.length < 1 ? 'Waiting for the first student to join.' : seated.length + ' of 20 seats are claimed. Press Start when everyone is in; the other ' + (20 - seated.length) + ' seats will be played by AI.';
+    case 'lobby': return seated.length < 1 ? 'Waiting for the first student to join.' : seated.length + ' of ' + (g.team_count || 20) + ' seats are claimed. Press Start when everyone is in; the other ' + ((g.team_count || 20) - seated.length) + ' seats will be played by AI.';
     case 'news': return 'Old-style news phase (a game started before the change). ' + (host.hasMarket() ? 'Advance opens the live market.' : 'Advance opens decisions.');
     case 'market': if (host.inOpening) return 'Opening auction: every team is bidding for its third company. Only the auction is open. Advance closes it, the winners keep their company, and round 1 opens with the lots nobody won on the side.'; return locked.length + ' of ' + seated.length + ' teams have locked. The market, businesses and actions are all open. Advance closes the market and works out the round.';
     case 'decide': return locked.length + ' of ' + seated.length + ' teams have locked. ' + (locked.length >= seated.length && seated.length ? 'Everyone is in; the round works out by itself.' : 'Advance works out the round with the saved plans.');

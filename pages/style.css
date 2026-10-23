@@ -391,3 +391,14 @@ img.lastcall-art { display: block; width: 100%; max-height: 110px; object-fit: c
 @media (max-width: 640px) { .page-team, .page-team #app { height: auto; overflow: visible; } .teamapp { height: auto; min-height: 100vh; } .teamapp .zones { flex: none !important; min-height: 0; } .teamapp .zone { max-height: none; overflow: visible; } }
 .pj-standings .aidiv { font-size: 22px; color: var(--muted, #9aa3b2); margin: 14px 0 8px; }
 .strow .vl em.net { font-style: normal; font-size: .55em; color: var(--muted, #9aa3b2); }
+
+/* ---- 2026-10-23 BUS 450 (about 23 pairs): more than 20 tables. Compact final standings, a 7-column opening grid, a one-line-per-lot live auction ---- */
+.pj-standings.crowd .pj-winner-art { display: none; } .pj-standings.crowd .ctrl .go { font-size: 22px; padding: 6px 18px; } .pj-standings.crowd .lede { font-size: 20px; margin: 4px 0; }
+.pj-standings.crowd .cols { gap: 24px; } .pj-standings.crowd .stcol h2 { font-size: 20px; margin: 2px 0; }
+.pj-standings.crowd .strow { font-size: 19px; padding: 1px 10px; margin-bottom: 2px; grid-template-columns: 36px 1fr auto; line-height: 1.15; }
+.pj-standings.crowd .aidiv { font-size: 15px; margin: 6px 0 3px; }
+.mk-grid.dense.opening.many { grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.mk-grid.dense.opening.many .mk-card { padding: 3px 7px; } .mk-grid.dense.opening.many .mk-name { font-size: 15px; line-height: 1.1; } .mk-grid.dense.opening.many .mk-price b { font-size: 28px; } .mk-grid.dense.opening.many .mk-price span { font-size: 12px; } .mk-grid.dense.opening.many .mk-lead { font-size: 14px; } .mk-grid.dense.opening.many .mk-head svg { width: 22px; height: 22px; }
+.pj-auction-slot.dense4 .aurow { padding: 0 6px; } .pj-auction-slot.dense4 .an { font-size: 14px; line-height: 1.05; } .pj-auction-slot.dense4 .ap { font-size: 16px; } .pj-auction-slot.dense4 .al { font-size: 11px; line-height: 1; } .pj-auction-slot.dense4 .aurow svg { width: 18px; height: 18px; } .pj-auction-slot.dense4 .aulist { gap: 2px 6px; }
+.pj-auction-slot.dense3.dense4 > p.sub { display: none; } .pj-auction-slot.dense3.dense4 > h3 { font-size: 26px; margin: 0 0 4px; }
+.pj-auction-slot.dense3.dense4 .aurow { padding: 0 6px; } .pj-auction-slot.dense3.dense4 .aulist { gap: 2px 6px; }
