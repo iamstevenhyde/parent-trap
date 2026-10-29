@@ -80,6 +80,9 @@ export function createGame(seed, teamCount = 8, opts = {}) {
     for (const { u, w } of heldUnits(state, id)) openSpell(state, id, u, w, 1);
     t.ev1 = evOf(state, id);
   }
+  // Level start: top up cash so every table (human and AI) starts at the same total value; the inherited pair alone leaves gaps near $100M.
+  const startIds = [...state.teamIds, ...state.botIds], top = Math.max(...startIds.map(id => state.teams[id].ev1));
+  for (const id of startIds) { const t = state.teams[id], add = Math.round(top - t.ev1); if (add > 0) { t.cash += add; t.ev1 = evOf(state, id); } }
   // Pool queue for rounds 2 and 3 (and leftovers for round 4): every unit nobody owns that is not a round-1 lot.
   const free = state.unitIds.filter(id => !state.units[id].owners.length && !cfg.ROUND1_LOTS.includes(id));
   state.poolQueue = keyedShuffle(free, seed, 'pool_order');

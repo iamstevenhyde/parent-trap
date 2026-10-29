@@ -83,7 +83,7 @@ export const CONFIG = {
   LOTS_R2: 3, LOTS_R3: 3, LOTS_R4_MAX: 5,   // round 5 has no auction lots (Steven, 2026-10-12 evening): it only shows what other teams listed in round 4
   LIST_LAST_ROUND: 4,   // listings for other teams open rounds 2 to 4 (a listing shows one round later, so the last one is bought in round 5)
   // AI price floor (2026-10-12 evening): an AI seat steps in on an auction lot whose price sits well below that seat's own estimate
-  AI_FLOOR: true, FLOOR_TRIGGER: 0.97, FLOOR_MAX_SHARE: 1.00, FLOOR_BID_SHARE: 0.95, FLOOR_KEEP: 100, FLOOR_FROM_TICK: 6, FLOOR_MAX_LEADS: 4, BOT_MAX_WINS_LIVE: 4, FLOOR_BOT_CASH: 800,   // live games with the floor: AI seats start with this much cash (400 otherwise), because a floor needs cash
+  AI_FLOOR: true, FLOOR_TRIGGER: 0.97, FLOOR_MAX_SHARE: 1.00, FLOOR_BID_SHARE: 0.95, FLOOR_KEEP: 100, FLOOR_FROM_TICK: 6, FLOOR_MAX_LEADS: 4, BOT_MAX_WINS_LIVE: 4, FLOOR_BOT_CASH: 400,   // live games with the floor: AI seats start with the same cash as students (was 800 until 10/29)
 
   // counterfactual
   CF_SEED_CASH: 0,
