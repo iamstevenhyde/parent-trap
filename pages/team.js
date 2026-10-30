@@ -2,7 +2,7 @@
 // The page never touches the engine. It reads the team view, results and final snapshots the admin publishes,
 // and writes only its own saved plan (pt_decisions) back.
 
-import { $, h, friendlyError, fmtM, mmss, params, setParam, pageMode, safeGet, safeSet, safeSessionGet, safeSessionSet, toast, debounce } from './util.js';
+import { $, h, friendlyError, fmtM, mmss, params, setParam, pageMode, safeGet, safeSet, safeSessionGet, safeSessionSet, toast, debounce, scrollMarks, restoreScroll } from './util.js';
 import { installGlossary } from './glossary.js';
 import { openStore, savedSeat, saveSeat, forgetSeat, resumeSeat, lookupCode, takeNewSeat, takeOverSeat, heartbeat } from './supa.js';
 import { roleFor, can, planFromRow, attentionUsed, meter, lockReason, activeSeats, ROLES_ON } from './roles.js';
@@ -275,8 +275,8 @@ function render() {
   if (!S.game || !S.seat) return;
   if (typing() || pressing()) { S.dirty = true; return; }
   S.dirty = false;
-  // Remember where every scrolling pane was (the page itself, and each zone, which scrolls on its own) so a redraw never throws the player back to the top.
-  const ctx = buildCtx(), g = S.game, scroll = { y: window.scrollY, zones: Object.fromEntries([...app.querySelectorAll('.zone[data-zone]')].map(z => [z.dataset.zone, z.scrollTop])) };
+  // Remember where every scrolling pane was (the page itself, each zone, and any open drawer or results sheet) so a redraw never throws the player back to the top.
+  const ctx = buildCtx(), g = S.game, scroll = { y: window.scrollY, marks: scrollMarks(app) };
   const root = h('div.teamapp');
   root.append(devBar());
   if (S.offline) root.append(h('div.offline', 'Offline. Your last choices are saved.'));
@@ -320,7 +320,7 @@ function render() {
   }
   if (S.drawer) root.append(h('div.overlay', { onclick: e => { if (e.target.classList.contains('overlay')) { S.drawer = null; render(); } } }, [S.drawer === 'caps' ? capabilitiesPanel(ctx.view) : historyPanel(S.results), h('button.go.closebtn', { type: 'button', onclick: () => { S.drawer = null; render(); } }, 'Close')]));
   app.replaceChildren(root);
-  for (const z of root.querySelectorAll('.zone[data-zone]')) if (scroll.zones[z.dataset.zone]) z.scrollTop = scroll.zones[z.dataset.zone];
+  restoreScroll(app, scroll.marks);
   window.scrollTo(0, scroll.y);
 }
 

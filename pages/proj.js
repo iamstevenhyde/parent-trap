@@ -2,7 +2,7 @@
 // news per round, the final snapshot, plus the game row for phase, clock and the reveal queue.
 // Admin shortcuts (page opened with ?k=ADMINKEY): P pauses the clock, Space steps the reveal.
 
-import { $, h, friendlyError, fmtM, fmtBig, fmtSigned, mmss, params, setParam, pageMode, debounce } from './util.js';
+import { $, h, friendlyError, fmtM, fmtBig, fmtSigned, mmss, params, setParam, pageMode, debounce, scrollMarks, restoreScroll } from './util.js';
 import { installGlossary } from './glossary.js';
 import { openStore } from './supa.js';
 import { PieBoard } from './pies.js';
@@ -424,9 +424,10 @@ function render() {
   else body = worldBody();   // the live market is the right-hand panel of the world screen now
 
   if (g.phase === 'results' && P.publics[g.round]) for (const b of P.publics[g.round].breaking) queueBreaking('BREAKING: ' + b.text.replace(/^BREAKING:\s*/, ''));
-  const f = frame(body), ov = g.phase === 'final' ? autopsyOverlay() : null;
+  const f = frame(body), ov = g.phase === 'final' ? autopsyOverlay() : null, marks = scrollMarks(app);
   if (ov) f.append(ov);
   app.replaceChildren(f);
+  restoreScroll(app, marks);   // a bid redraws the screen; keep the host's scroll in the market list, board or autopsy
   tick();
   updateChyron();
 }

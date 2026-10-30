@@ -122,12 +122,12 @@ export function renderBusinesses(ctx) {
 // ---------- Corporate actions ----------
 const ACTION_ROWS = [
   { key: 'integrate', perm: 'ops', title: 'Integrate', gloss: 'integrate', first: true,
-    line: 'Join two of your businesses into one operation. The pair then earns extra every round.',
-    pays: 'Integrate has three outcomes. Pairs that truly share something, like a power supply or customers, earn extra every round (half in the first round). Pairs that share nothing waste the money. Pairs that clash lose value every round, with or without Integrate.',
+    line: 'Join two of your businesses into one operation. Not every pair fits: most share nothing, so check the pair with a Deep dive first.',
+    pays: 'Only a pair that truly shares something, like a power supply or customers, earns extra every round (half in the first round). A pair that shares nothing wastes the money, and a pair that clashes loses value with or without Integrate.',
     costs: (v) => 'About 3% of the two businesses\' value, at least $10M' + (v.pairs.length ? ' (' + v.pairs.map(x => fmtM(x.cost)).join(' or ') + ' for your pair' + (v.pairs.length > 1 ? 's' : '') + ')' : '') + ', plus 1 attention.' },
   { key: 'deepdive', perm: 'ops', title: 'Deep dive', gloss: 'deepdive', first: true,
-    line: 'Look closely at one thing. On a pair of your businesses it tells you whether they really fit. On a company for sale it narrows your estimate of its real value.',
-    pays: 'It pays before a big decision: run it on a pair before you Integrate, or on a company before you bid. The answer is shown at once and cannot be taken back.',
+    line: 'Research one thing. On two of your businesses it tells you whether they fit, which is the only way to know if an Integrate will pay. On a company for sale it shows a tight range for its true value.',
+    pays: 'Before you Integrate a pair or bid big on a company. The answer appears at once in the Deep dive results box at the top of this column, and on the company card for a company for sale.',
     costs: () => '1 attention and no cash.' },
   { key: 'turnaround', perm: 'ops', title: 'Turnaround', gloss: 'turnaround',
     line: 'Step in and fix a business that is losing money.',
@@ -243,6 +243,13 @@ export function renderActions(ctx) {
   const zone = h('section.zone.zone-act' + (anyOk ? '' : '.grey'), { dataset: { zone: 'act' } });
   zone.append(h('h2', ['Corporate actions ', noteDot(ctx, 'ops'), suggestBar(ctx, 'ops')]));
   zone.append(h('p.sub', 'You can do up to ' + view.attMax + ' corporate actions each round. Each uses 1 of your ' + view.attMax + ' attention points (' + Math.max(0, view.attMax - used) + ' left), including a Deep dive on a company for sale. Attention resets next round and cannot be saved.' + (view.liveAuction ? ' Bids do not use attention; cash limits them.' : ' Bids and builds use attention too.')));
+  // Class 10/29: teams bought Deep dives and could not find the answer, so every reading this game is listed here.
+  { const pairs = view.pairs.filter(x => x.known), lots = view.lots.filter(l => l.deep && !l.own);
+    zone.append(h('div.ddbox', [h('b', 'Deep dive results'),
+      ...(pairs.length || lots.length ? [
+        ...pairs.map(x => h('p', [x.aName + ' and ' + x.bName + ': ', x.known.related ? h('b.up', 'they fit, Integrate pays') : h('b.down', 'no fit, Integrate would waste the money')])),
+        ...lots.map(l => h('p', [l.name + ': true value ', h('b', fmtM(l.signal.lo) + ' to ' + fmtM(l.signal.hi))])),
+      ] : [h('p.sub', 'None yet. A Deep dive answer shows up here as soon as you add it.')])])); }
   if (ctx.game.round === LAST_CALL_ROUND) zone.append(h('img.lastcall-art', { src: SCENE.lastcall, alt: '', loading: 'lazy' }));
   if (ctx.game.round === 5) zone.append(h('p.sub.notnow', 'Round 5 is the last round and it has no auction. A company another team listed in round 4 can still be bought, at its listed price, if one is shown. New builds closed after round 3, because a build takes 2 rounds to arrive and a later one would land after the game ends. Listing a business for other teams closed after round 4, because a listing shows to the others one round later. You can still sell a business to the market.'));
   else if (ctx.game.round === 4) zone.append(h('p.sub.notnow', 'Round 4 is the last auction: round 5 has no auction. You can still list a business for other teams (it shows in round 5 at your price) and sell one to the market. New builds closed after round 3, because a build takes 2 rounds to arrive and a later one would land after the game ends.'));

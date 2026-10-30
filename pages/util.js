@@ -3,6 +3,33 @@
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
+// Redraws replace the whole page, so every scrolled pane (zones, drawers, overlays, projector boards) would jump back to the top on each bid.
+// scrollMarks() records each scrolled element by its class chain and position; restoreScroll() puts the new elements back where the old ones were.
+function scrollKey(el, root) {
+  const parts = [];
+  for (let e = el; e && e !== root; e = e.parentElement) parts.push(e.tagName + '.' + [...e.classList].filter(c => !/^(on|grey|frozen|leading|rival|dense\d?)$/.test(c)).sort().join('.') + (e.dataset.zone ? '#' + e.dataset.zone : ''));
+  return parts.reverse().join('>');
+}
+export function scrollMarks(root) {
+  const marks = new Map();
+  for (const el of root.querySelectorAll('*')) if (el.scrollTop > 0) {
+    const k = scrollKey(el, root), list = marks.get(k) || [];
+    list.push(el.scrollTop); marks.set(k, list);
+  }
+  return marks;
+}
+export function restoreScroll(root, marks) {
+  if (!marks.size) return;
+  const seen = new Map();
+  for (const el of root.querySelectorAll('*')) {
+    if (el.scrollHeight <= el.clientHeight) continue;
+    const k = scrollKey(el, root), list = marks.get(k);
+    if (!list) continue;
+    const i = seen.get(k) || 0; seen.set(k, i + 1);
+    if (list[i]) el.scrollTop = list[i];
+  }
+}
+
 // h('div.card', {onclick: fn, dataset: {a: 1}}, child, 'text')
 export function h(tagSpec, attrs, ...kids) {
   const m = /^([a-z0-9]*)((?:[.#][^.#]+)*)$/i.exec(tagSpec) || [null, 'div', ''];
