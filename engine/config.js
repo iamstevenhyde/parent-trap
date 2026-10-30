@@ -51,7 +51,12 @@ export const CONFIG = {
   ANALYST_FREE_DEEP: 1,            // CALIBRATED-1029: Analyst, this many Deep dives each round use no attention
 
   // synergy and integration
-  SYN_BASIS: 'value', SYN_YIELD: 0.04,   // CALIBRATED (spec: 'cash'). Synergy rate applies to value x 4%, not to each unit's own yield
+  SYN_BASIS: 'value', SYN_YIELD: 0.06,   // CALIBRATED-1029b (was 0.04; 0.08 made RELATED rank first on PA in 63% of seeds and failed E.4b and E.1): a fitting pair earns on the COMBINED value of both units (the code already summed both; the rate was too low for a related buy to beat the ~12% premium)
+  // Merge (rules change batch 2, 2026-10-29): two same-industry units a team fully owns become one company. CALIBRATED-1029b.
+  MERGE_COST_PCT: 0.04, MERGE_SCALE: 0.05, MERGE_LAST_ROUND: 4,   // fee = 4% of combined value; the merged company starts worth 5% more than the two parts (scale bonus)
+  // Round 5 is the last market (batch 2): leftover and merged companies are for sale, and every team may borrow against its biggest business.
+  LOTS_R5_MAX: 4, BORROW_ROUND: 5, BORROW_SHARE: 0.30,   // CALIBRATED-1029b
+  // (SYN_BASIS 'value' is CALIBRATED, spec 'cash': the synergy rate applies to value x SYN_YIELD, not to each unit's own yield
   SYN_CAP: 35.0,   // CALIBRATED (spec 5.0)
   INT_COST_PCT: 0.03, INT_COST_MIN: 10,
   INT_REAL: 0.70, INT_REAL_CAP: 0.85,   // CAP = with Integrator I

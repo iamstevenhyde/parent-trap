@@ -142,6 +142,10 @@ const ACTION_ROWS = [
     line: 'Ask another team to bid with you on one company. You each pay half and own half.',
     pays: 'It counts as your third business only if you win together. A joint win pays each of you a dividend.',
     costs: (v) => 'No cash until you win. In a sealed round it uses 1 attention. The dividend is ' + fmtM(v.allyDividend) + ' and 1 extra action next round.' },
+  { key: 'merge', perm: 'ops', title: 'Merge', first: false,
+    line: 'Turn two of your businesses in the same industry into one company.',
+    pays: 'The merged company is worth about 5% more than the two parts and counts as one business when the game charges you for running them. It can be sold or listed whole.',
+    costs: (v) => 'About ' + v.mergePct + '% of the two businesses\' value' + (v.mergePairs.length ? ' (' + v.mergePairs.map(x => fmtM(x.cost)).join(' or ') + ')' : '') + ', plus 1 attention. Rounds 1 to 4.' },
   { key: 'divest', perm: 'market', title: 'Divest', line: 'Sell a business to the market now, or list it for other teams.',
     pays: 'Market sale: 85% of its stand-alone value in cash this round (95% with Portfolio manager). Listing: you set 80%, 100% or 120%, and if another team buys it next round you get that price; if not, you keep it. Divest is open rounds 2 to 5, listing rounds 2 to 4.',
     costs: () => 'The 15% haircut on a market sale, plus 1 attention.' },
@@ -159,8 +163,9 @@ function notRelevant(ctx, key) {
     case 'turnaround': return view.units.some(u => u.canTurn && u.stress) ? null : (view.units.some(u => u.stress) ? 'The business that is losing money had a Turnaround too recently.' : 'None of your businesses is losing money, so a Turnaround has nothing to fix.');
     case 'devcap': return !view.devcapOpen ? 'Develop capability is closed in round 5. It could not pay off in time.' : (view.skillCount + view.pendingSkills.length >= view.maxSkills ? 'Your team already holds ' + view.maxSkills + ' skills.' : null);
     case 'ally': return ctx.game.round >= 5 ? 'Round 5 has no auction, so there is nothing to bid on together.' : (!view.teams.filter(t => t.id !== view.teamId).length ? 'No other team has players to ally with.' : (view.lots.some(l => l.kind === 'auction' && !l.own) ? null : 'Nothing is for sale to bid on together.'));
+    case 'merge': return ctx.game.round > 4 ? 'Merge closes after round 4.' : (view.mergePairs.length ? null : 'You need two businesses in the same industry that you fully own and that are at full strength.');
     case 'divest': return ctx.game.round < 2 ? 'Divest opens in round 2.' : (view.divest.length ? null : 'You have no business to sell.');
-    case 'hedge': return view.hedges.length ? null : 'No risk in the news right now can be protected against.';
+    case 'hedge': return ctx.game.round >= 5 ? 'Protect is closed in round 5.' : (view.hedges.length ? null : 'No risk in the news right now can be protected against.');
     case 'deepdive': return (view.lots.some(l => !l.own && !l.deep) || view.pairs.some(x => !x.known)) ? null : 'Everything you could look into is already checked.';
     default: return null;
   }
@@ -235,6 +240,14 @@ function pickerFor(ctx, key) {
         else ctx.write({ market: { bids: [...plan.bids.filter(b => b.lot !== p.lot), { lot: p.lot, amount: a, ally: p.partner }], builds: plan.builds } });
         ctx.ui.picker = null; p.amount = ''; ctx.rerender();
       } }, 'Send the invite'), cancel);
+  } else if (key === 'merge') {
+    const pairs = view.mergePairs.filter(x => !plan.actions.some(a => a.type === 'merge' && [a.a, a.b].sort().join('+') === x.key));
+    if (!pairs.length) return h('div.picker', 'You need two businesses in the same industry that you fully own and that are at full strength.');
+    p.mpair = p.mpair && pairs.some(x => x.key === p.mpair) ? p.mpair : pairs[0].key;
+    const cur = pairs.find(x => x.key === p.mpair);
+    form.append(select(pairs.map(x => [x.key, x.aName + ' and ' + x.bName]), v => { p.mpair = v; ctx.rerender(); }, cur.key),
+      h('p.sub', 'Cost ' + fmtM(cur.cost) + '. You get one company worth about ' + fmtM(cur.bonus) + ' more than the two together. Any Integrate project on either one ends, and a merged company cannot be merged again.'),
+      h('button.go', { type: 'button', onclick: () => add({ type: 'merge', a: cur.a, b: cur.b }) }, 'Add Merge'), cancel);
   } else if (key === 'deepdive') {
     const opts = [];
     if (ctx.editable('market')) for (const l of view.lots) if (!l.own && !l.deep && !plan.actions.some(a => a.lot === l.key)) opts.push(['lot:' + l.key, 'Company for sale: ' + l.name]);
@@ -244,15 +257,15 @@ function pickerFor(ctx, key) {
     form.append(select(opts, v => { p.dd = v; }, p.dd), h('p.sub', 'Costs 1 attention. You see the result right away, and it cannot be undone.'),
       h('button.go', { type: 'button', onclick: () => { const [k, v] = [p.dd.slice(0, p.dd.indexOf(':')), p.dd.slice(p.dd.indexOf(':') + 1)]; add(k === 'lot' ? { type: 'deepdive', lot: v } : { type: 'deepdive', pair: v.split('+') }); } }, 'Add Deep dive'), cancel);
   } else if (key === 'divest') {
-    const us = view.divest.filter(d => !plan.actions.some(a => a.type === 'divest' && a.unit === d.unit));
+    const us = view.divest.filter(d => !plan.actions.some(a => a.type === 'divest' && (a.unit === d.unit || a.unit === d.with || a.with === d.unit)));
     if (ctx.game.round < 2) return h('div.picker', 'Divest opens in round 2.');
     if (!us.length) return h('div.picker', 'No business to sell.');
-    p.unit = p.unit && us.some(d => d.unit === p.unit) ? p.unit : us[0].unit;
-    const cur = us.find(d => d.unit === p.unit), nm = id => view.units.find(u => u.id === id).name;
+    p.unit = p.unit && us.some(d => d.key === p.unit) ? p.unit : us[0].key;
+    const cur = us.find(d => d.key === p.unit), nm = id => view.units.find(u => u.id === id).name;
     const modes = [['market', 'Sell to the market for ' + fmtM(cur.market) + ' (' + cur.marketPct + '% of stand-alone value, cash this round)'], ...cur.list.map(l => ['list:' + l.f, 'List for other teams at ' + Math.round(l.f * 100) + '% of stand-alone value (' + fmtM(l.price) + '), shown next round, you keep it until someone takes it'])];
     p.mode = p.mode && modes.some(m => m[0] === p.mode) ? p.mode : 'market';
-    form.append(select(us.map(d => [d.unit, nm(d.unit)]), v => { p.unit = v; ctx.rerender(); }, cur.unit), h('p.sub', 'Stand-alone value ' + fmtM(cur.sa) + '. ' + cur.marketPct + '% = ' + fmtM(cur.market) + '.' + (cur.list.length ? '' : ' Listing for other teams is open in rounds 2 to 4, so it is not offered this round.')), select(modes, v => { p.mode = v; }, p.mode),
-      h('button.go', { type: 'button', onclick: () => add(p.mode === 'market' ? { type: 'divest', unit: cur.unit, mode: 'market' } : { type: 'divest', unit: cur.unit, mode: 'list', f: Number(p.mode.split(':')[1]) }) }, 'Add Divest'), cancel);
+    form.append(select(us.map(d => [d.key, d.label || nm(d.unit)]), v => { p.unit = v; ctx.rerender(); }, cur.key), h('p.sub', 'Stand-alone value ' + fmtM(cur.sa) + '. ' + cur.marketPct + '% = ' + fmtM(cur.market) + '.' + (cur.list.length ? '' : ' Listing for other teams is open in rounds 2 to 4, so it is not offered this round.')), select(modes, v => { p.mode = v; }, p.mode),
+      h('button.go', { type: 'button', onclick: () => { const w = cur.with ? { with: cur.with } : {}; add(p.mode === 'market' ? { type: 'divest', unit: cur.unit, ...w, mode: 'market' } : { type: 'divest', unit: cur.unit, ...w, mode: 'list', f: Number(p.mode.split(':')[1]) }); } }, 'Add Divest'), cancel);
   } else if (key === 'hedge') {
     if (!view.hedges.length) return h('div.picker', 'No risk in the news can be protected against right now.');
     const opts = [];
@@ -278,8 +291,8 @@ export function renderActions(ctx) {
         ...lots.map(l => h('p', [l.name + ': true value ', h('b', fmtM(l.signal.lo) + ' to ' + fmtM(l.signal.hi))])),
       ] : [h('p.sub', 'None yet. A Deep dive answer shows up here as soon as you add it.')])])); }
   if (ctx.game.round === LAST_CALL_ROUND) zone.append(h('img.lastcall-art', { src: SCENE.lastcall, alt: '', loading: 'lazy' }));
-  if (ctx.game.round === 5) zone.append(h('p.sub.notnow', 'Round 5 is the last round and it has no auction. A company another team listed in round 4 can still be bought, at its listed price, if one is shown. New builds closed after round 3, because a build takes 2 rounds to arrive and a later one would land after the game ends. Listing a business for other teams closed after round 4, because a listing shows to the others one round later. You can still sell a business to the market.'));
-  else if (ctx.game.round === 4) zone.append(h('p.sub.notnow', 'Round 4 is the last auction: round 5 has no auction. You can still list a business for other teams (it shows in round 5 at your price) and sell one to the market. New builds closed after round 3, because a build takes 2 rounds to arrive and a later one would land after the game ends.'));
+  if (ctx.game.round === 5) zone.append(h('p.sub.notnow', 'Round 5 is the last market. Merged companies, what nobody bought, and what teams listed in round 4 are for sale. You can sell a business to the market. Listing closed after round 4, because a listing shows one round later. Build, Develop capability and Protect are closed. If you are short on cash, your credit line is bigger this round: ' + fmtM(Math.round(view.borrowExtra)) + ' more, borrowed against your biggest business at the normal interest.'));
+  else if (ctx.game.round === 4) zone.append(h('p.sub.notnow', 'Round 4 is the last round to list a business (it shows in round 5 at your price), to Merge, and to develop a skill. Round 5 is a last market with a few companies for sale. New builds closed after round 3.'));
   if (full) zone.append(h('p.warnline', 'You have used all ' + view.attMax + ' attention points.'));
   for (const r of ACTION_ROWS) {
     const ok = ctx.editable(r.perm), open = ctx.ui.picker && ctx.ui.picker.key === r.key, irrelevant = notRelevant(ctx, r.key), here = irrelevant ? '' : whyHere(ctx, r.key);

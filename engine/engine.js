@@ -9,7 +9,7 @@ import { NOISE_TICKER } from './data/shocks.js';
 import { hash01, keyedShuffle } from './rng.js';
 import { buildSchedule, chainById } from './schedule.js';
 import {
-  CO, buildWorld, trueTheta, makeUnit, valueOf, saOf, estimate, heldUnits, reservedFor, budgetOf,
+  CO, buildWorld, trueTheta, makeUnit, valueOf, saOf, estimate, heldUnits, reservedFor, budgetOf, matrixSigma,
 } from './model.js';
 import { CAPABILITIES, emptyCaps, skillCount, skillNote, attentionOf, emit, emptyLedger, openSpell, evOf, normalizeDecision, applyDeepDives, post, money, attLimit } from './core.js';
 
@@ -103,7 +103,7 @@ export function lotCount(state, base, candidates) {
 }
 function lotFor(state, unitId, kind = 'auction', extra = {}) {
   const u = state.units[unitId];
-  return { key: 'L:' + unitId + (kind === 'team' ? ':team' : ''), unitId, kind, catalog: CO[u.co].value_musd, scarce: u.scarce, ...extra };
+  return { key: 'L:' + unitId + (kind === 'team' ? ':team' : ''), unitId, kind, catalog: u.parts ? Math.round(saOf(state, u)) : CO[u.co].value_musd, scarce: u.scarce, ...extra };
 }
 
 export function openRound(state, round) {
@@ -116,17 +116,22 @@ export function openRound(state, round) {
   else if (round === 3) ids.push(...state.poolQueue.splice(0, lotCount(state, cfg.LOTS_R3, state.poolQueue)));
   else if (round === 4) {
     // round 4 lists whatever nobody owns (unsold lots, units sold to the market). Round 5 lists no auction lots: only team listings (below).
-    const left = keyedShuffle(state.unitIds.filter(id => !state.units[id].owners.length && !state.units[id].built), state.seed, 'r4_lots');
+    const left = keyedShuffle(state.unitIds.filter(id => !state.units[id].owners.length && !state.units[id].built && !state.units[id].gone), state.seed, 'r4_lots');
     ids.push(...left.slice(0, lotCount(state, cfg.LOTS_R4_MAX, left)));
+  } else if (round === 5) {
+    // Round 5 is the last market (batch 2): merged companies first, then whatever nobody bought, up to LOTS_R5_MAX, with the round-4 listings below.
+    const left = keyedShuffle(state.unitIds.filter(id => !state.units[id].owners.length && !state.units[id].built && !state.units[id].gone), state.seed, 'r5_lots')
+      .sort((a, b) => (state.units[b].parts ? 1 : 0) - (state.units[a].parts ? 1 : 0));
+    ids.push(...left.slice(0, lotCount(state, cfg.LOTS_R5_MAX, left)));
   }
   state.lots = ids.map(id => lotFor(state, id));
   // team-to-team listings that become visible this round
   for (const l of state.listings) {
     if (l.visible !== round) continue;
     const u = state.units[l.unit];
-    if (!u.owners.some(o => o.team === l.seller)) continue;
+    if (!u.owners.some(o => o.team === l.seller) || (l.bundle && !state.units[l.bundle[1]].owners.some(o => o.team === l.seller))) continue;
     const sa = l.sa;
-    state.lots.push({ key: 'L:' + l.unit + ':team', unitId: l.unit, kind: 'team', catalog: sa, price: l.price, seller: l.seller, f: l.f, scarce: u.scarce });
+    state.lots.push({ key: 'L:' + l.unit + ':team', unitId: l.unit, kind: 'team', catalog: sa, price: l.price, seller: l.seller, f: l.f, scarce: u.scarce, ...(l.bundle ? { bundle: l.bundle } : {}) });
   }
   state.lotsByKey = Object.fromEntries(state.lots.map(l => [l.key, l]));
   // private signals for every team and lot
@@ -174,6 +179,7 @@ export function validateDecisions(state, teamId, dec) {
     else if (lot.seller === teamId) errors.push('You cannot bid on your own listing.');
     else if (lot.kind === 'auction' && !(b.amount > 0)) errors.push('A bid needs an amount above zero.');
     if (b.ally && (b.ally === teamId || !state.teams[b.ally] || state.teams[b.ally].isBot)) errors.push('A co-bid needs another table.');
+    if (b.ally && lot && lot.bundle) errors.push('An integrated pair cannot be bought as a co-bid.');
   }
   for (const b of d.builds) {
     const lot = state.lotsByKey[b.lot];
@@ -206,14 +212,22 @@ export function validateDecisions(state, teamId, dec) {
       if (a.lot) { if (!state.lotsByKey[a.lot]) errors.push('Deep dive needs a listed company.'); }
       else if (a.pair) { if (!held[a.pair[0]] || !held[a.pair[1]]) errors.push('Deep dive on a pair needs two units you hold.'); }
       else errors.push('Deep dive needs a target.');
+    } else if (a.type === 'merge') {
+      const A = state.units[a.a], B = state.units[a.b];
+      if (!solo(a.a) || !solo(a.b) || a.a === a.b) errors.push('Merge needs two businesses you fully own.');
+      else if (A.ind !== B.ind) errors.push('Merge needs two businesses in the same industry.');
+      else if (A.parts || B.parts) errors.push('A merged company cannot be merged again.');
+      else if (A.s < 1 || B.s < 1) errors.push('A new build must reach full strength before it can be merged.');
+      else if (round > cfg.MERGE_LAST_ROUND) errors.push('Merge closes after round ' + cfg.MERGE_LAST_ROUND + '.');
     } else if (a.type === 'divest') {
       if (!solo(a.unit)) errors.push('Divest needs a unit you fully own.');
+      else if (a.with && (!solo(a.with) || !t.projects.some(p => p.pays && ((p.a === a.unit && p.b === a.with) || (p.a === a.with && p.b === a.unit))))) errors.push('Two businesses can be sold together only when you have run a working Integrate project on them.');
       else if (round < 2) errors.push('Divest opens in round 2.');
       else if (a.mode === 'list' && (round > cfg.LIST_LAST_ROUND || !cfg.LIST_FRACTIONS.includes(a.f))) errors.push('Listings are made in rounds 2 to ' + cfg.LIST_LAST_ROUND + ' at 80, 100 or 120 percent.');
       else if (a.mode !== 'list' && a.mode !== 'market') errors.push('Divest is a market sale or a listing.');
     } else if (a.type === 'hedge') {
       const c = state.schedule.chains.find(x => x.id === a.chain);
-      if (!c || round < c.start + 1 || round > c.start + 2) errors.push('That protection is not on offer now.');
+      if (!c || round < c.start + 1 || round > c.start + 2 || round >= cfg.BORROW_ROUND) errors.push('That protection is not on offer now.');
       else if (!held[a.unit]) errors.push('Protection needs a unit you hold.');
     } else errors.push('Unknown action ' + a.type + '.');
     const key = JSON.stringify(a);

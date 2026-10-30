@@ -149,6 +149,42 @@ export function estimate(state, teamId, unitId, partnerId = null) {
   return { value: saOf(state, u) * Math.exp(e.ln), sd: e.sd };
 }
 
+// ---------- merged companies (batch 2) ----------
+// Two same-industry units become one unit whose company record is built here. The record depends only on the two parts, so it is the same in every game
+// (like the sister companies in roster.js). Its shocks are the value-weighted blend of the two parts, registered per game in state.world.
+export const isMerged = u => !!(u && u.parts);
+export function mergedCompany(id, cA, cB, requestsA, requestsB) {
+  if (CO[id]) return CO[id];
+  const avg = (x, y) => (x + y) / 2, mul = {};
+  for (const k of Object.keys(cA.shock_multipliers)) mul[k] = avg(cA.shock_multipliers[k], cB.shock_multipliers[k]);
+  const hooks = { ...cA.relatedness_hooks };
+  for (const [k, v] of Object.entries(cB.relatedness_hooks)) hooks[k] = Math.max(hooks[k] || 0, v);
+  const reqs = requestsA.map((r, i) => {
+    const o = requestsB.find(x => x.kind === r.kind) || requestsB[i];
+    return { ...r, name: r.name + ' (both businesses)', cost_musd: r.cost_musd + o.cost_musd };
+  });
+  CO[id] = {
+    id, name: cA.name + ' + ' + cB.name, industry: cA.industry, hook: cA.hook, value_musd: cA.value_musd + cB.value_musd,
+    cash_yield_pct: avg(cA.cash_yield_pct, cB.cash_yield_pct), growth: cA.growth, capital_requests: reqs, shock_multipliers: mul, relatedness_hooks: hooks,
+    auction_note: { verdict: 'fair', listing_claims: 'Two ' + cA.industry.toLowerCase() + ' businesses run as one company.', truth: 'Worth the sum of its parts plus a small scale bonus.' },
+    scarce: false, start_home: 'merged', source_flavor: '', merged: true,
+  };
+  return CO[id];
+}
+// Blend the two parts' shock series into one series for the merged company, for every round, in this game's world.
+export function registerMergedWorld(state, id, uA, uB, wA) {
+  const w = state.world, wB = 1 - wA;
+  w.M[id] = []; w.Mc[id] = []; w.phi[id] = [];
+  for (let t = 1; t <= 6; t++) {
+    w.M[id][t] = clamp(wA * w.M[uA.co][t] + wB * w.M[uB.co][t], state.cfg.M_CLAMP[0], state.cfg.M_CLAMP[1]);
+    w.phi[id][t] = Math.max(w.phi[uA.co][t], w.phi[uB.co][t]);
+    const byId = {};
+    for (const c of w.Mc[uA.co][t]) byId[c.id] = { id: c.id, a: c.m, b: 1 };
+    for (const c of w.Mc[uB.co][t]) (byId[c.id] = byId[c.id] || { id: c.id, a: 1, b: 1 }).b = c.m;
+    w.Mc[id][t] = Object.values(byId).map(c => ({ id: c.id, m: wA * c.a + wB * c.b }));
+  }
+}
+
 // ---------- capital requests ----------
 export function requestsOf(unit) { return CO[unit.co].capital_requests; }
 export function cheaperIdx(unit) { const r = requestsOf(unit); return r[0].cost_musd <= r[1].cost_musd ? 0 : 1; }
@@ -175,7 +211,15 @@ export function heldUnits(state, teamId) {
   return out;
 }
 export const lineCap = state => (state.world.ratesUp[Math.min(state.round || 1, 5)] ? state.cfg.RATES_UP.LINE : state.cfg.LINE);
-export const lineAvail = (state, team) => Math.max(0, lineCap(state) - team.drawn);
+// Round 5 (batch 2): every team may borrow against its biggest business, up to BORROW_SHARE of that business's value on top of the normal line, at the normal rate.
+export function borrowExtra(state, teamId) {
+  if (state.round !== state.cfg.BORROW_ROUND) return 0;
+  let best = 0;
+  for (const { u, w } of heldUnits(state, teamId)) best = Math.max(best, w * valueOf(state, u));
+  return state.cfg.BORROW_SHARE * best;
+}
+export const lineCapFor = (state, teamId) => lineCap(state) + borrowExtra(state, teamId);
+export const lineAvail = (state, team) => Math.max(0, lineCapFor(state, team.id) - team.drawn);
 export const budgetOf = (state, teamId) => { const t = state.teams[teamId]; return t.cash + lineAvail(state, t); };
 export const feeRate = (state, teamId) => (state.teams[teamId].capabilities.acquirer ? 0 : state.cfg.DEAL_FEE);
 
@@ -211,6 +255,7 @@ export function actionCash(state, teamId, a) {
     case 'integrate': return integrateCost(state, teamId, state.units[a.a], state.units[a.b]).actual;
     case 'turnaround': return turnCost(state, teamId, state.units[a.unit]).actual;
     case 'devcap': return cfg.DEVCAP_COST;
+    case 'merge': return cfg.MERGE_COST_PCT * (saOf(state, state.units[a.a]) + saOf(state, state.units[a.b]));
     case 'hedge': return hedgeCost(state, teamId, a.chain, saOf(state, state.units[a.unit]));
     default: return 0;
   }

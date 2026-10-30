@@ -78,6 +78,7 @@ export function actionCost(view, a) {
     case 'integrate': return c.integrate[[a.a, a.b].sort().join('+')] || 0;
     case 'turnaround': return c.turnaround[a.unit] || 0;
     case 'devcap': return c.devcap;
+    case 'merge': return c.merge[[a.a, a.b].sort().join('+')] || 0;
     case 'hedge': return c.hedge[a.chain + '|' + a.unit] || 0;
     default: return 0;
   }
@@ -104,7 +105,8 @@ export function describeAction(view, a) {
     case 'turnaround': return 'Turnaround at ' + nm(a.unit);
     case 'devcap': return 'Develop capability: ' + (view.capLabels[a.cap] || a.cap);
     case 'deepdive': return a.lot ? 'Deep dive on ' + ((view.lots.find(l => l.key === a.lot) || {}).name || a.lot) : 'Deep dive on ' + nm(a.pair[0]) + ' and ' + nm(a.pair[1]);
-    case 'divest': return a.mode === 'list' ? 'List ' + nm(a.unit) + ' at ' + Math.round(a.f * 100) + ' percent' : 'Sell ' + nm(a.unit) + ' to the market';
+    case 'merge': return 'Merge ' + nm(a.a) + ' and ' + nm(a.b) + ' into one company';
+    case 'divest': { const who = a.with ? nm(a.unit) + ' and ' + nm(a.with) + ' together' : nm(a.unit); return a.mode === 'list' ? 'List ' + who + ' at ' + Math.round(a.f * 100) + ' percent' : 'Sell ' + who + ' to the market'; }
     case 'hedge': return 'Protect ' + nm(a.unit) + ' against ' + ((view.hedges.find(x => x.chain === a.chain) || {}).title || a.chain);
     default: return a.type;
   }

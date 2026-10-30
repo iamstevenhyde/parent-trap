@@ -10,6 +10,7 @@ import {
 import { chainById } from '../engine/engine.js';
 import { obligations } from '../engine/model.js';
 import { exportLog } from '../engine/replay.js';
+import { borrowExtra } from '../engine/model.js';
 
 export const ROUND_NAMES = ['Setup', 'Build', 'Operate', 'Adapt', 'Restructure', 'Commit'];
 const r5 = x => Math.round(x / 5) * 5;
@@ -31,7 +32,7 @@ export function buildTeamView(state, tid, wins = []) {
     return {
       id: u.id, co: u.co, name: co.name, ind: u.ind, w, value: V * w, trend: pv ? V / pv - 1 : 0, hook: co.hook, scarce: !!u.scarce,
       requests: co.capital_requests.map(r => ({ name: r.name, cost: r.cost_musd, effect: r.effect, kind: r.kind })),
-      stress: struggling, turnCost: turnCost(state, tid, u).actual, canTurn: w === 1 && round - u.lastTurn >= 2,
+      stress: struggling, turnCost: turnCost(state, tid, u).actual, canTurn: w === 1 && round - u.lastTurn >= 2, merged: !!u.parts, mergeReady: w === 1 && !u.parts && u.s >= 1,
     };
   });
   const full = units.filter(u => u.w === 1);
@@ -43,11 +44,19 @@ export function buildTeamView(state, tid, wins = []) {
     const k = t.known[key];
     pairs.push({ key, a: a.id, b: b.id, aName: a.name, bName: b.name, cost: integrate[key], exists, known: k ? { related: k.related, round: k.round } : null });
   }
-  const costs = { integrate, turnaround: {}, devcap: cfg.DEVCAP_COST, hedge: {} };
+  // Merge (batch 2): two businesses in the same industry that you fully own and that are at full strength.
+  const mergePairs = [], merge = {};
+  for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) {
+    const a = units[i], b = units[j];
+    if (!a.mergeReady || !b.mergeReady || a.ind !== b.ind) continue;
+    const key = [a.id, b.id].sort().join('+'), cost = cfg.MERGE_COST_PCT * (saOf(state, state.units[a.id]) + saOf(state, state.units[b.id]));
+    merge[key] = cost; mergePairs.push({ key, a: a.id, b: b.id, aName: a.name, bName: b.name, cost, bonus: cfg.MERGE_SCALE * (saOf(state, state.units[a.id]) + saOf(state, state.units[b.id])) });
+  }
+  const costs = { integrate, turnaround: {}, devcap: cfg.DEVCAP_COST, hedge: {}, merge };
   for (const u of units) costs.turnaround[u.id] = u.turnCost;
   const hedges = [];
   for (const c of state.schedule.chains) {
-    if (round < c.start + 1 || round > c.start + 2) continue;
+    if (round < c.start + 1 || round > c.start + 2 || round >= cfg.BORROW_ROUND) continue;
     const ch = chainById[c.id];
     const entry = { chain: c.id, title: ch.name, label: ch.stage2.actions[0].label, units: [] };
     for (const u of units) { const cost = hedgeCost(state, tid, c.id, saOf(state, state.units[u.id])); costs.hedge[c.id + '|' + u.id] = cost; entry.units.push({ unit: u.id, cost }); }
@@ -57,8 +66,8 @@ export function buildTeamView(state, tid, wins = []) {
     const u = state.units[l.unitId], co = CO[u.co], sig = t.signals[l.key] || { value: l.catalog, sd: 0.2 };
     const canBuild = l.kind === 'auction' && !l.scarce && round <= cfg.BUILD_LAST_ORDER_ROUND;
     return {
-      key: l.key, unitId: l.unitId, name: co.name, ind: u.ind, hook: co.hook, catalog: l.catalog, claim: co.auction_note.listing_claims,
-      kind: l.kind, price: l.price || null, seller: l.seller || null, sellerName: l.seller ? teamName(state, l.seller) : null, own: l.seller === tid,
+      key: l.key, unitId: l.unitId, name: l.bundle ? l.bundle.map(id => unitName(state, id)).join(' and ') + ' (integrated pair)' : co.name, ind: u.ind, hook: co.hook, catalog: l.catalog, claim: co.auction_note.listing_claims,
+      kind: l.kind, price: l.price || null, seller: l.seller || null, sellerName: l.seller ? teamName(state, l.seller) : null, own: l.seller === tid, bundle: l.bundle || null,
       scarce: !!l.scarce, buildCost: canBuild ? buildCostOf(state, tid, l.unitId).actual : null,
       signal: { lo: r5(sig.value * Math.exp(-sig.sd)), hi: r5(sig.value * Math.exp(sig.sd)), mid: r5(sig.value) },
       deep: !!t.deep[l.unitId],
@@ -66,8 +75,16 @@ export function buildTeamView(state, tid, wins = []) {
   });
   const divest = full.map(u => {
     const sa = saOf(state, state.units[u.id]);
-    return { unit: u.id, sa, market: saleShare(state, tid) * sa, marketPct: Math.round(saleShare(state, tid) * 100), list: round >= 2 && round <= cfg.LIST_LAST_ROUND ? cfg.LIST_FRACTIONS.map(f => ({ f, price: f * sa })) : [] };
+    return { unit: u.id, key: u.id, sa, market: saleShare(state, tid) * sa, marketPct: Math.round(saleShare(state, tid) * 100), list: round >= 2 && round <= cfg.LIST_LAST_ROUND ? cfg.LIST_FRACTIONS.map(f => ({ f, price: f * sa })) : [] };
   });
+  // An integrated pair can be sold together; the price counts the synergy and the buyer keeps it.
+  for (const p of t.projects) {
+    if (!p.pays) continue;
+    const a = full.find(x => x.id === p.a), b = full.find(x => x.id === p.b);
+    if (!a || !b) continue;
+    const sa = valueOf(state, state.units[a.id]) + valueOf(state, state.units[b.id]);
+    divest.push({ unit: a.id, with: b.id, key: a.id + '+' + b.id, label: a.name + ' and ' + b.name + ' together', sa, market: saleShare(state, tid) * sa, marketPct: Math.round(saleShare(state, tid) * 100), list: round >= 2 && round <= cfg.LIST_LAST_ROUND ? cfg.LIST_FRACTIONS.map(f => ({ f, price: f * sa })) : [] });
+  }
   const prev = state.snapshots[Math.max(0, round - 1)];
   return {
     v: 1, teamId: tid, name: t.name, round, seed: state.seed, liveAuction: !!state.opts.liveAuction,
@@ -78,6 +95,7 @@ export function buildTeamView(state, tid, wins = []) {
     capabilities: { ...t.capabilities }, pendingSkills: [...t.pendingSkills], skillCount: skillCount(t), maxSkills: cfg.MAX_SKILLS, devcapOpen: round <= cfg.DEVCAP_LAST_ROUND, freeDeep: t.capabilities.analyst ? cfg.ANALYST_FREE_DEEP : 0,
     buildDelay: buildTerms(state, tid).delay, buildPct: Math.round(buildTerms(state, tid).strength * 100), autoArrive: 1 + cfg.BUILD_DELAY, autoPct: Math.round(cfg.BUILD_STRENGTH * 100), allyDividend: cfg.COBID_CASH * (t.capabilities.ally ? cfg.ALLY_DIV_MULT : 1),
     capLabels: CAP_LABEL, capList: CAPABILITIES,
+    mergePairs, borrowExtra: borrowExtra(state, tid), borrowShare: cfg.BORROW_SHARE, mergePct: Math.round(cfg.MERGE_COST_PCT * 100), mergeBonusPct: Math.round(cfg.MERGE_SCALE * 100),
     units, pairs, lots, costs, hedges, divest, builds: t.cip.map(c => ({ name: CO[c.co] ? CO[c.co].name : c.co, cost: c.cost })),
     teams: state.teamIds.map(id => ({ id, name: teamName(state, id) })),
   };
@@ -147,7 +165,7 @@ export function buildPublic(state, round, now = Date.now()) {
   const auctions = (state.auctions || []).filter(a => a.round === round).map(a => {
     const u = state.units[a.unit], co = CO[u.co];
     return {
-      key: a.lot, unit: a.unit, name: co.name, ind: u.ind, kind: a.kind, catalog: a.catalog, trueValue: a.trueValue, price: a.price,
+      key: a.lot, unit: a.unit, name: a.bundle ? a.bundle.map(id => unitName(state, id)).join(' and ') : co.name, ind: u.ind, kind: a.kind, catalog: a.catalog, trueValue: a.trueValue, price: a.price,
       bids: a.bids.map(b => ({ names: b.teams.map(x => teamName(state, x)), teams: b.teams, amount: b.amount })).sort((x, y) => x.amount - y.amount),
       winners: (a.winners || []).map(x => teamName(state, x)), winnerIds: a.winners || [], seller: a.seller || null,
     };

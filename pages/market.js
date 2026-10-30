@@ -19,7 +19,7 @@ import { botDecide } from '../engine/bots.js';
 import { hash01 } from '../engine/rng.js';
 import { leadsLot, shareOfLot } from './flow.js';
 
-export const MARKET_SECONDS = { 1: 240, 2: 150, 3: 150, 4: 180, 5: 60 };   // round 5 only shows round-4 listings, so it is short (and skipped when nothing was listed)
+export const MARKET_SECONDS = { 1: 240, 2: 150, 3: 150, 4: 180, 5: 120 };   // round 5 is the last market (batch 2): leftover and merged companies at auction, plus round-4 listings
 export const SNIPE_MS = 8000;      // a bid in the last 8 seconds puts 8 seconds back on the clock
 export const CUSHION = 1;          // share of cash plus credit line a team may promise in the market (the end-of-round obligations are counted exactly)
 export const MAX_MULT = 3;         // typo guard: no bid above three times the catalog value
@@ -33,7 +33,7 @@ export function openMarket(state) {
   for (const l of state.lots) {
     const u = state.units[l.unitId], fixed = l.kind === 'team';
     lots[l.key] = {
-      key: l.key, unitId: l.unitId, kind: l.kind, name: CO[u.co].name, ind: u.ind, catalog: l.catalog, scarce: !!l.scarce, seller: l.seller || null,
+      key: l.key, unitId: l.unitId, kind: l.kind, bundle: l.bundle || null, name: l.bundle ? l.bundle.map(id => CO[state.units[id].co].name).join(' and ') + ' (integrated pair)' : CO[u.co].name, ind: u.ind, catalog: l.catalog, scarce: !!l.scarce, seller: l.seller || null,
       sellerName: l.seller ? state.teams[l.seller].name : null, fixed, opening: fixed ? l.price : openingFor(l.catalog), step: fixed ? 0 : stepFor(l.catalog),
       price: null, high: null, hist: [], bids: 0,
     };
@@ -87,6 +87,7 @@ export function placeBid(m, state, tid, lotKey, amount, rest = 0, now = Date.now
   const lot = m.lots[lotKey], isBot = state.teams[tid].isBot;
   if (!m.open) return { ok: false, reason: 'The market is closed.' };
   if (!lot) return { ok: false, reason: 'That company is not listed this round.' };
+  if (lot.bundle) return { ok: false, reason: 'An integrated pair is sold whole, so it cannot be bought as a co-bid.' };
   if (lot.seller === tid) return { ok: false, reason: 'This is your own listing.' };
   if (leadsLot(lot, tid)) return { ok: false, reason: 'You already lead on ' + lot.name + (lot.high.ally ? ' together with ' + state.teams[lot.high.team === tid ? lot.high.ally : lot.high.team].name : '') + '.' };
   if (lot.fixed) {

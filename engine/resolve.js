@@ -5,7 +5,7 @@
 import {
   CO, saOf, valueOf, heldUnits, pairEffect, relatedPair, kappa, budgetOf, feeRate, requestsOf, rhoFor, applyInsurance,
   defendM, makeUnit, integrateCost, turnCost, buildCostOf, hedgePct, matrixSigma, pairAsset, clamp, lineCap,
-  buildTerms, hasSkill, saleShare, hedgeBase, hedgeCost,
+  buildTerms, hasSkill, saleShare, hedgeBase, hedgeCost, mergedCompany, registerMergedWorld, lineCapFor,
 } from './model.js';
 import { chainById } from './schedule.js';
 import { keyedNormal } from './rng.js';
@@ -58,7 +58,7 @@ function clearAuctions(state, ctx) {
       });
       if (ok) { winner = e; break; }
     }
-    const rec = { round: t, lot: lot.key, unit: lot.unitId, kind: lot.kind, bidders: n, trueValue: trueNow, catalog: lot.catalog, price: null, winners: [], bids: entries.map(e => ({ teams: e.teams, amount: e.amount })) };
+    const rec = { round: t, lot: lot.key, unit: lot.unitId, ...(lot.bundle ? { bundle: lot.bundle } : {}), kind: lot.kind, bidders: n, trueValue: trueNow, catalog: lot.catalog, price: null, winners: [], bids: entries.map(e => ({ teams: e.teams, amount: e.amount })) };
     state.auctions.push(rec);
     if (!winner) continue;
     rec.price = winner.amount; rec.winners = winner.teams;
@@ -88,15 +88,22 @@ function clearAuctions(state, ctx) {
     }
     if (winner.unmatchedAlly) emit(state, { type: 'ally_unmatched', team: winner.teams[0], text: 'Your partner did not match the co-bid, so it went in as your own bid.' });
     if (lot.kind === 'team') {
-      const sellerId = lot.seller, sa = saOf(state, u);
+      const sellerId = lot.seller, group = (lot.bundle || [u.id]).map(id => state.units[id]), vSum = group.reduce((s, x) => s + valueOf(state, x), 0);
       state.teams[sellerId].cash += winner.amount;
-      post(state, sellerId, 'T3', winner.amount - sa); post(state, sellerId, 'T4', -u.Z);
-      closeSpell(state, sellerId, u, t - 1, { type: 'sold', proceeds: winner.amount });
-      dropProjects(state, sellerId, u.id);
-      u.owners = []; ctx.removed.add(u.id);
-      emit(state, { type: 'unit_acquired_by_team', team: sellerId, buyer: winner.teams.join('+'), unit: u.id, price: winner.amount, text: winner.teams.join(' and ') + ' bought ' + CO[u.co].name + ' from your listing for ' + money(winner.amount) + '.' });
+      for (const x of group) {
+        const share = lot.bundle ? valueOf(state, x) / vSum : 1, got = winner.amount * share;
+        post(state, sellerId, 'T3', got - saOf(state, x)); post(state, sellerId, 'T4', -x.Z);
+        if (lot.bundle) x.zKeep = { Z: x.Z, Zb: x.Zb };   // the synergy value waits here until the buyer takes the pair (updateValues zeroes unowned units first)
+        closeSpell(state, sellerId, x, t - 1, { type: 'sold', proceeds: got });
+        dropProjects(state, sellerId, x.id);
+        x.owners = []; ctx.removed.add(x.id);
+      }
+      emit(state, { type: 'unit_acquired_by_team', team: sellerId, buyer: winner.teams.join('+'), unit: u.id, price: winner.amount, text: winner.teams.join(' and ') + ' bought ' + (lot.bundle ? group.map(x => CO[x.co].name).join(' and ') + ' (the integrated pair)' : CO[u.co].name) + ' from your listing for ' + money(winner.amount) + '.' });
     }
-    ctx.joins.push({ unit: u, owners, rec });
+    if (lot.bundle) {   // an integrated pair is bought whole: both units, and the Integrate project goes with them so the buyer keeps the synergy
+      ctx.joins.push({ unit: u, owners, rec, keep: true, bundle: lot.bundle });
+      ctx.joins.push({ unit: state.units[lot.bundle[1]], owners: owners.map(o => ({ ...o })), rec: {}, keep: true });
+    } else ctx.joins.push({ unit: u, owners, rec });
     for (const e of entries) if (e !== winner) for (const id of e.teams) if (!state.teams[id].isBot) {
       emit(state, { type: 'auction_lost', team: id, unit: u.id, bid: e.amount, price: winner.amount, text: 'You did not win ' + CO[u.co].name + '. Your ' + money(e.amount) + ' bid is released. The winner paid ' + money(winner.amount) + '.' });
     }
@@ -135,19 +142,28 @@ function applyActions(state, ctx) {
       const u = a.unit ? state.units[a.unit] : null;
       if (a.type === 'divest') {
         if (!u || !u.owners.length || ctx.removed.has(u.id) || !u.owners.some(o => o.team === id && o.w === 1)) continue;
-        const sa = saOf(state, u);
+        // a.with: sell an integrated pair together (batch 2). The price counts the synergy, and a buyer keeps it.
+        const w2 = a.with ? state.units[a.with] : null;
+        if (a.with && (!w2 || !w2.owners.some(o => o.team === id && o.w === 1) || ctx.removed.has(w2.id) || !tm.projects.some(p => p.pays && ((p.a === u.id && p.b === w2.id) || (p.a === w2.id && p.b === u.id))))) continue;
+        const group = w2 ? [u, w2] : [u], names = group.map(x => CO[x.co].name).join(' and ');
+        const basis = x => (w2 ? valueOf(state, x) : saOf(state, x)), total = group.reduce((s, x) => s + basis(x), 0);
         if (a.mode === 'list') {
-          const price = a.f * sa;
-          state.listings.push({ unit: u.id, seller: id, f: a.f, sa, price, created: t, visible: t + 1 });
-          emit(state, { type: 'listing_posted', team: id, unit: u.id, price, text: 'You listed ' + CO[u.co].name + ' for ' + money(price) + ' (' + Math.round(a.f * 100) + ' percent of its stand-alone value). It shows to other tables next round.' });
+          const price = a.f * total;
+          state.listings.push({ unit: u.id, ...(w2 ? { bundle: [u.id, w2.id] } : {}), seller: id, f: a.f, sa: total, price, created: t, visible: t + 1 });
+          emit(state, { type: 'listing_posted', team: id, unit: u.id, price, text: 'You listed ' + names + (w2 ? ' together' : '') + ' for ' + money(price) + ' (' + Math.round(a.f * 100) + ' percent of its ' + (w2 ? 'value with the synergy' : 'stand-alone value') + '). It shows to other tables next round.' });
         } else {
-          const share = saleShare(state, id), proceeds = share * sa;
-          tm.cash += proceeds; post(state, id, 'T3', cfg.SALE_MARKET * sa - sa); post(state, id, 'T5', proceeds - cfg.SALE_MARKET * sa); post(state, id, 'T4', -u.Z);
-          closeSpell(state, id, u, t - 1, { type: 'sold', proceeds });
-          dropProjects(state, id, u.id);
-          u.owners = []; ctx.removed.add(u.id);
-          emit(state, { type: 'divest_market', team: id, unit: u.id, proceeds, text: 'You sold ' + CO[u.co].name + ' to the market for ' + money(proceeds) + ', which is ' + Math.round(share * 100) + ' percent of its value on its own (' + money(sa) + ').' });
-          if (hasSkill(state, id, 'portfolio')) skillNote(state, id, 'portfolio', 'you got ' + money(proceeds - cfg.SALE_MARKET * sa) + ' more than a normal market sale of ' + CO[u.co].name + ' would pay.', proceeds - cfg.SALE_MARKET * sa);
+          const share = saleShare(state, id);
+          let proceeds = 0;
+          for (const x of group) {
+            const b = basis(x), got = share * b;
+            tm.cash += got; proceeds += got;
+            post(state, id, 'T3', cfg.SALE_MARKET * b - saOf(state, x)); post(state, id, 'T5', got - cfg.SALE_MARKET * b); post(state, id, 'T4', -x.Z);
+            closeSpell(state, id, x, t - 1, { type: 'sold', proceeds: got });
+            dropProjects(state, id, x.id);
+            x.owners = []; ctx.removed.add(x.id);
+          }
+          emit(state, { type: 'divest_market', team: id, unit: u.id, proceeds, text: 'You sold ' + names + ' to the market for ' + money(proceeds) + ', which is ' + Math.round(share * 100) + ' percent of its ' + (w2 ? 'value with the synergy' : 'value on its own') + ' (' + money(total) + ').' });
+          if (hasSkill(state, id, 'portfolio')) skillNote(state, id, 'portfolio', 'you got ' + money(proceeds - cfg.SALE_MARKET * total) + ' more than a normal market sale of ' + names + ' would pay.', proceeds - cfg.SALE_MARKET * total);
         }
       }
     }
@@ -177,6 +193,24 @@ function applyActions(state, ctx) {
           post(state, id, 'T7', -c.actual);
           emit(state, { type: 'synergy_not_earned', team: id, units: [A.id, B.id], cost: c.actual, text: 'You ran an Integrate project on ' + CO[A.co].name + ' and ' + CO[B.co].name + ', but they do not really share anything. Nothing was gained. Use a Deep dive next time to check.' });
         }
+      } else if (a.type === 'merge') {
+        const A = state.units[a.a], B = state.units[a.b], mine = x => x && x.owners.length === 1 && x.owners[0].team === id && x.owners[0].w === 1 && !ctx.removed.has(x.id);
+        if (!mine(A) || !mine(B) || A.id === B.id || A.ind !== B.ind || A.parts || B.parts || A.s < 1 || B.s < 1 || t > cfg.MERGE_LAST_ROUND) continue;
+        const saA = saOf(state, A), saB = saOf(state, B), vA = valueOf(state, A), vB = valueOf(state, B), fee = cfg.MERGE_COST_PCT * (saA + saB);
+        const mid = 'MG:' + A.co + '&' + B.co + '@' + id + 'r' + t;
+        mergedCompany(mid, CO[A.co], CO[B.co], CO[A.co].capital_requests, CO[B.co].capital_requests);
+        registerMergedWorld(state, mid, A, B, saA / (saA + saB));
+        const wA = saA / (saA + saB), co = CO[mid];
+        const M = makeUnit(cfg, mid, co, (saA + saB) * (1 + cfg.MERGE_SCALE) / state.world.Vm[A.ind][state.vmIdx], {
+          y: wA * A.y + (1 - wA) * B.y, g: wA * A.g + (1 - wA) * B.g, parts: [A.id, B.id], owners: [{ team: id, w: 1 }],
+          nGrowth: Math.max(A.nGrowth, B.nGrowth), lastTurn: Math.max(A.lastTurn, B.lastTurn), Vprev: (A.Vprev === null || B.Vprev === null) ? null : A.Vprev + B.Vprev,
+        });
+        state.units[mid] = M; state.unitIds.push(mid); state.unitIds.sort();
+        for (const x of [A, B]) { closeSpell(state, id, x, t - 1, { type: 'merged', proceeds: valueOf(state, x) }); dropProjects(state, id, x.id); x.owners = []; x.gone = true; ctx.removed.add(x.id); }
+        tm.cash -= fee; ctx.W[id]++;
+        post(state, id, 'T2', -fee); post(state, id, 'T4', valueOf(state, M) - vA - vB);
+        openSpell(state, id, M, 1, t); addFlow(state, id, mid, 'act', fee);
+        emit(state, { type: 'merged', team: id, unit: mid, cost: fee, bonus: cfg.MERGE_SCALE * (saA + saB), text: 'You merged ' + CO[A.co].name + ' and ' + CO[B.co].name + ' into one company. The fee was ' + money(fee) + '. The merged company is worth ' + money(valueOf(state, M)) + ', which is ' + money(cfg.MERGE_SCALE * (saA + saB)) + ' more than the two parts, and it counts as one business when the game charges for running them.' });
       } else if (a.type === 'turnaround') {
         const u = state.units[a.unit];
         if (!u.owners.some(o => o.team === id && o.w === 1) || ctx.removed.has(u.id)) continue;
@@ -362,10 +396,11 @@ function joinsAndBuilds(state, ctx) {
   const t = state.round, cfg = state.cfg;
   for (const j of ctx.joins) {
     const u = j.unit;
-    u.owners = j.owners; u.Z = 0; u.Zb = 0; u.ins = null; u.hedges = []; u.hedgeStrong = []; u.cap = null; u.tn = null;
+    u.owners = j.owners; if (j.keep && u.zKeep) { u.Z = u.zKeep.Z; u.Zb = u.zKeep.Zb; delete u.zKeep; } else { u.Z = 0; u.Zb = 0; } u.ins = null; u.hedges = []; u.hedgeStrong = []; u.cap = null; u.tn = null;
     const v = valueOf(state, u);
     j.rec.valueAtJoin = v;
     for (const o of u.owners) { post(state, o.team, 'T3', o.w * v); openSpell(state, o.team, u, o.w, t + 1); }
+    if (j.bundle) state.teams[u.owners[0].team].projects.push({ a: j.bundle[0], b: j.bundle[1], start: t - 1, pays: true });
   }
   for (const id of allTeams(state)) {
     const tm = state.teams[id], done = tm.cip.filter(c => c.completeAfter === t);
@@ -387,9 +422,9 @@ function joinsAndBuilds(state, ctx) {
 
 // ---------- step 9: credit line, forced sale, receivership ----------
 function sweep(state) {
-  const t = state.round, cfg = state.cfg, cap = state.world.ratesUp[t] ? cfg.RATES_UP.LINE : cfg.LINE;
+  const t = state.round, cfg = state.cfg;
   for (const id of allTeams(state)) {
-    const tm = state.teams[id];
+    const tm = state.teams[id], cap = lineCapFor(state, id);
     if (tm.cash < 0) {
       const draw = Math.min(-tm.cash, Math.max(0, cap - tm.drawn));
       tm.cash += draw; tm.drawn += draw;

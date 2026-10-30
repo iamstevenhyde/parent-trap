@@ -43,7 +43,7 @@ const FILES = {
 };
 const BY_CO = Object.fromEntries('R1 R2 R3 R4 R5 R6 G1 G2 G3 G4 G5 G6 C1 C2 C3 C4 C5 C6 S1 S2 S3 S4 S5 S6 E1 E2 E3 E4 E5 E6 A1 A2 A3 A4 A5 A6'.split(' ').map(id => [id, 'co-' + id + '.webp']));   // one picture per company (2026-10-12); sister companies (R3b) use their base company's
 export function artUrl(ind, key = '') {
-  const id = String(key).replace(/^L:/, '').replace(/:team$/, '').split('+')[0], own = BY_CO[id] || BY_CO[id.replace(/[a-z]+$/, '')];
+  const id = String(key).replace(/^L:/, '').replace(/^MG:/, '').replace(/:team$/, '').split(/[+&@]/)[0], own = BY_CO[id] || BY_CO[id.replace(/[a-z]+$/, '')];
   if (own) return ART_ROOT + own;
   const f = FILES[ind];
   if (!f) return null;

@@ -24,7 +24,7 @@ function roundTip(ctx, g) {
   if (ctx.opening || (g.round === 1 && g.phase === 'market')) return 'First bid at least half the listed value, then raise by about 2.5 percent. A bid in the last 8 seconds adds 8 seconds. Winners pay a 1.5 percent deal fee.';
   if (g.round === 2) return 'Divest opens now. Sell a business to the market for 85 percent of its stand-alone value, or list it for other teams at 80, 100 or 120 percent. A listing appears next round at a fixed price, and you keep the business until someone takes it.';
   if (g.round === 3) return 'Last round to order a build: a build takes two rounds to arrive at 70 percent strength. Last round to develop a skill is round 4.';
-  if (g.round === 4) return 'Last round with auction lots, and the last round to list a business. Round 5 offers only what other teams listed.';
+  if (g.round === 4) return 'Last round to list a business, to Merge, and to develop a skill. Round 5 is a last, smaller market.';
   return null;
 }
 
