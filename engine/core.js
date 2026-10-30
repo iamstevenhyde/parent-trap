@@ -1,6 +1,6 @@
 // Small shared helpers used by engine.js, resolve.js and scoring.js (kept apart to avoid import cycles).
 
-import { valueOf, heldUnits, hooksReal } from './model.js';
+import { valueOf, heldUnits, hooksReal, pairEffect } from './model.js';
 
 export const CAPABILITIES = ['acquirer', 'integrator', 'operator', 'analyst'];
 export const CAP_LABEL = { acquirer: 'Acquirer', integrator: 'Integrator', operator: 'Operator', analyst: 'Analyst' };
@@ -73,7 +73,8 @@ export function applyDeepDives(state, teamId, d, estimateFn) {
       if (!t.deep[unitId]) { t.deep[unitId] = state.round; t.signals[a.lot] = estimateFn(state, teamId, unitId); }
     } else {
       const [x, y] = a.pair, key = [x, y].sort().join('+');
-      t.known[key] = { related: hooksReal(state.cfg, state.units[x].co, state.units[y].co), round: state.round };
+      // 10/29 class: the reading used the shared-asset hook alone, so 6 pairs read "fit" and then paid nothing. It now asks the payoff's own question.
+      t.known[key] = { related: pairEffect(state.cfg, state.units[x], state.units[y], true).sigma > 0, round: state.round };
     }
   }
 }
