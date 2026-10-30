@@ -49,7 +49,8 @@ export function planFromRow(row) {
   return { bids: m.bids || [], builds: m.builds || [], capital: row.capital || {}, actions: row.actions || [], live: !!m.closed || !!(m.live && Object.keys(m.live).length), liveBids: m.live || {} };
 }
 // In a live-market game the bids are won in the market and limited by cash, so they do not use attention.
-export const attentionUsed = (plan, live) => ((plan.live || live) ? 0 : plan.bids.length) + plan.builds.length + plan.actions.length;
+// free is the number of Deep dives the Analyst skill gives for nothing each round (view.freeDeep).
+export const attentionUsed = (plan, live, free = 0) => ((plan.live || live) ? 0 : plan.bids.length) + plan.builds.length + plan.actions.length - Math.min(free, plan.actions.filter(a => a.type === 'deepdive').length);
 
 // The cash meter, from the numbers in the team view. Same arithmetic as the engine's reservedFor():
 // highest single bid (own share, plus the deal fee) plus builds, capital requests and action costs.
@@ -87,7 +88,7 @@ export function lockReason(view, plan, why, predicted, round, opts = {}) {
   const needWhy = opts.requireWhy === true;   // the why sentence and predicted value never block a lock unless the admin switches the gate on
   const m = meter(view, plan);
   if (m.short > 1e-6 && m.commits > 0) return 'Cash is ' + fmtM(Math.ceil(m.short)) + ' short. ' + (view.liveAuction ? 'That counts about ' + fmtM(Math.ceil(m.obl)) + ' you must pay at the end of the round (interest and the cost of running your businesses). Without it the game would force you to sell a business. Your market wins and build orders stay, so remove a capital request or an action. Check Free to spend before you lock.' : 'Remove a bid or a capital request.');
-  const att = attentionUsed(plan, view.liveAuction);
+  const att = attentionUsed(plan, view.liveAuction, view.freeDeep);
   if (att > view.attMax) return 'You picked ' + att + ' actions. The limit is ' + view.attMax + '.';
   if (needWhy && wordCount(why) < 8) return 'Write your one-sentence why.';
   if (needWhy && (predicted === null || predicted === undefined || predicted === '' || !(Number(predicted) > 0))) return 'Enter your predicted value.';

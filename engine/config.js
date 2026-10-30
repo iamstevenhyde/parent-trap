@@ -37,7 +37,18 @@ export const CONFIG = {
   // capital requests and insurance
   RHO_GROWTH: 1.5, RHO_DECAY: 0.9,   // CALIBRATED (spec 1.25 / 0.85)
   RHO_DEFEND: 0.85, RHO_LOCK: 0.90,
-  OPERATOR_RHO_BONUS: 0.05,
+  // Skills (rules change 2026-10-29, batch 1). One Develop capability earns a skill outright; a team holds at most MAX_SKILLS. Every number below is CALIBRATED-1029: start values from the approved spec, to be tuned by the gates.
+  MAX_SKILLS: 2, DEVCAP_LAST_ROUND: 4,   // Develop capability is blocked in round 5
+  OPERATOR_RHO_MULT: 0.15,         // CALIBRATED-1029: Operator, capital put into businesses returns this much more (was +0.05 flat)
+  OPERATOR_DOWN_SHARE: 0.5,        // CALIBRATED-1029: Operator, a Turnaround still works at this share of its gain when the whole industry is down
+  ACQ_SIGMA_MULT: 0.5,             // CALIBRATED-1029: Acquirer, the error on every estimate of a company for sale is this share of normal (twice as tight)
+  BUILDER_DELAY: 1, BUILDER_STRENGTH: 0.85,   // CALIBRATED-1029: Builder, a build arrives one round sooner (delay 1 instead of 2) at 85 percent strength instead of 70
+  ALLY_DIV_MULT: 2, ALLY_REBATE: 0.20,   // CALIBRATED-1029: Alliance partner, the alliance dividend doubles and the holder gets back this share of its half of a won co-bid
+  INT_RAMP_CAP: [1.0, 1.0],        // CALIBRATED-1029: Integrator, a fitting pair keeps all its synergy from the first round
+  LEAN_KAPPA_MULT: 0.70,           // CALIBRATED-1029: Lean headquarters, complexity cost is this share of normal (cut by 30 percent)
+  PORTFOLIO_SALE: 0.95,            // CALIBRATED-1029: Portfolio manager, a market sale returns this share of stand-alone value (85 percent without the skill)
+  RISK_COST_MULT: 0.5, RISK_BLOCK: 0.75,   // CALIBRATED-1029: Risk manager, Protect costs half and blocks this share of the damage (50 percent without the skill)
+  ANALYST_FREE_DEEP: 1,            // CALIBRATED-1029: Analyst, this many Deep dives each round use no attention
 
   // synergy and integration
   SYN_BASIS: 'value', SYN_YIELD: 0.04,   // CALIBRATED (spec: 'cash'). Synergy rate applies to value x 4%, not to each unit's own yield
@@ -45,7 +56,7 @@ export const CONFIG = {
   INT_COST_PCT: 0.03, INT_COST_MIN: 10,
   INT_REAL: 0.70, INT_REAL_CAP: 0.85,   // CAP = with Integrator I
   INT_RAMP: [0.5, 1.0],
-  INT_COST_SAVE: 0.20,                  // Integrator I cuts Integrate cost by this share
+  INT_COST_SAVE: 0.50,                  // CALIBRATED-1029 (was 0.20): Integrator cuts Integrate cost by this share
   RANCH_GROCERY_SIGMA: 0.14,
   SIGMA_CAP: 1.0,   // 1 = spec (no cap). Largest absolute pair synergy rate the engine will use
 
@@ -56,11 +67,10 @@ export const CONFIG = {
 
   // build and deals
   BUILD_COST: 0.60,
-  BUILD_COST_ACQ: 0.55,
   BUILD_STRENGTH: 0.70, BUILD_STEP: 0.15, BUILD_DELAY: 2, BUILD_LAST_ORDER_ROUND: 3,
   DEAL_FEE: 0.015,
-  COBID_CASH: 15, COBID_ATT: 1,   // alliance dividend (Steven, 2026-10-13): each partner of a winning co-bid gets this much cash now and this many extra actions next round
-  DEVCAP_COST: 10,
+  COBID_CASH: 30, COBID_ATT: 1,   // alliance dividend (Steven, 2026-10-13; raised from 15 to 30 on 2026-10-29): each partner of a winning co-bid gets this much cash now and this many extra actions next round
+  DEVCAP_COST: 20,   // CALIBRATED-1029 (was 10)
   SALE_MARKET: 0.85, SALE_FORCED: 0.80, LIST_FRACTIONS: [0.8, 1.0, 1.2],
 
   // cash, credit, receivership
@@ -74,13 +84,15 @@ export const CONFIG = {
   RELATED_HOOK_MIN: 2,
 
   // signals
-  SIGMA_SIGNAL: 0.20, SIGMA_DEEP: 0.0530, SIGMA_DEEP_ANALYST: 0.0420,
+  SIGMA_SIGNAL: 0.20, SIGMA_DEEP: 0.0530,
   BOT_SIGMA: 0.15, BOT_CASH: 400,
 
   // listings
   ROUND1_LOTS: ['C2', 'C5', 'R3', 'G3', 'A4', 'S2', 'E1', 'E5', 'A3', 'E4'],   // reworked 2026-10-08 with the inheritance table
   SCARCE: ['S2', 'S3', 'E1'],
   LOTS_R2: 3, LOTS_R3: 3, LOTS_R4_MAX: 5,   // round 5 has no auction lots (Steven, 2026-10-12 evening): it only shows what other teams listed in round 4
+  // Later-round lot counts (rules change 2026-10-29): the base counts above are the most a round lists. Rounds 3 and 4 list fewer when the tables hold little cash. See engine.js lotCount.
+  LOT_CASH_FRAC: 0.12, LOT_MIN: 2,   // CALIBRATED-1029: lots = total cash x this share / average listed value of the candidate lots, between LOT_MIN and the base count
   LIST_LAST_ROUND: 4,   // listings for other teams open rounds 2 to 4 (a listing shows one round later, so the last one is bought in round 5)
   // AI price floor (2026-10-12 evening): an AI seat steps in on an auction lot whose price sits well below that seat's own estimate
   AI_FLOOR: true, FLOOR_TRIGGER: 0.97, FLOOR_MAX_SHARE: 1.00, FLOOR_BID_SHARE: 0.95, FLOOR_KEEP: 100, FLOOR_FROM_TICK: 6, FLOOR_MAX_LEADS: 4, BOT_MAX_WINS_LIVE: 4, FLOOR_BOT_CASH: 400,   // live games with the floor: AI seats start with the same cash as students (was 800 until 10/29)

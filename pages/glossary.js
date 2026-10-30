@@ -16,8 +16,8 @@ export const GLOSSARY = {
   anergy: ['Anergy', 'The opposite of synergy: two businesses that are worth less together than apart.'],
   winners_curse: ['Winner\'s curse', 'In a sealed auction the team with the highest guess wins, and the highest guess is usually too high. So the winner often pays more than the company is worth.'],
   complexity: ['Complexity cost', 'The price of running many different businesses. Each extra unrelated business takes more of your attention and costs a slice of your value every round.'],
-  cobid: ['Co-bid (alliance)', 'Two teams with players bid together on one company. One team invites the other and the bid only counts once the other joins. Each team then pays half the price (plus its own deal fee) and owns half the company and half its value. It ends when the market closes; there is no joint venture after that. A company two teams share cannot be Integrated, given a Turnaround or sold by either team alone, and its capital request only goes through if both teams pick the same option. Compare your estimates before you join. When a joint bid wins, each partner also gets an alliance dividend of $15M in cash and one extra action in the next round.'],
-  capability: ['Capability', 'A skill your company earns by doing the same kind of move well twice.'],
+  cobid: ['Co-bid (alliance)', 'Two teams with players bid together on one company. One team invites the other and the bid only counts once the other joins. Each team then pays half the price (plus its own deal fee) and owns half the company and half its value. It ends when the market closes; there is no joint venture after that. A company two teams share cannot be Integrated, given a Turnaround or sold by either team alone, and its capital request only goes through if both teams pick the same option. Compare your estimates before you join. When a joint bid wins, each partner also gets an alliance dividend of $30M in cash and one extra action in the next round.'],
+  capability: ['Capability', 'A skill your company earns when you pay for Develop capability. A team can hold two skills.'],
   catalog: ['Listed value', 'The public price tag. Everyone sees the same number. It is not always the truth.'],
   signal: ['Your team\'s estimate', 'A range for the company\'s true value. The real value is usually inside it but can fall outside. Each team gets its own range. Listed value and the seller\'s claim are public and may be off. A deep dive narrows the range.'],
   integrate: ['Integrate', 'Make two of your businesses work together. It pays off only if they truly share something, and most pairs do not, so a Deep dive comes first.'],
@@ -27,7 +27,7 @@ export const GLOSSARY = {
   inherited: ['Inherited businesses', 'The value of the businesses you started with, and how they would have done anyway.'],
   allocation: ['Capital allocation returns', 'What you gained or lost by choosing where to put your cash each round.'],
   mna: ['Buying and selling companies', 'Price paid compared with real value. Overpaying shows up here as a loss.'],
-  skills: ['Skills you earned', 'Value from capabilities you earned by doing the same kind of move well twice.'],
+  skills: ['Skills you earned', 'Value from the skills you paid to develop, less what they cost.'],
   wasted: ['Attention wasted', 'Attention or money spent on moves that did nothing, like an Integrate on two businesses that share nothing.'],
   financing: ['Financing', 'Interest on the credit line, and the gain from fixing struggling businesses.'],
   meter: ['Cash meter', 'Shows what you can afford. Every bid, capital request and alliance share counts against it before you can lock.'],
@@ -62,11 +62,15 @@ export function installGlossary() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closePop(); });
 }
 
-// What each capability gives once it is earned (two uses). Numbers come from engine/config.js: DEAL_FEE 1.5%, BUILD_COST 60% vs BUILD_COST_ACQ 55%, INT_COST_SAVE 20%, INT_REAL 70% vs INT_REAL_CAP 85%,
-// TURN_COST_PCT 4% vs TURN_COST_PCT_OP 3%, TURN_GAIN 12% vs TURN_GAIN_OP 16%, SIGMA_DEEP 5.3% vs SIGMA_DEEP_ANALYST 4.2%.
+// What each skill gives (rules change 2026-10-29). Numbers come from the CALIBRATED-1029 lines in engine/config.js; engine/core.js CAP_BENEFIT holds the same sentences for the results.
 export const CAP_TEXT = {
-  acquirer: "You stop paying the 1.5% deal fee on purchases, and a build costs 55% of the company's value instead of 60%.",
-  integrator: 'Integrate projects cost 20% less, and a project that works captures 85% of the promised synergy instead of 70%.',
-  operator: "A Turnaround costs 3% of the business's value instead of 4%, and wins back 16% of its value instead of 12%.",
-  analyst: 'Your Deep dives are sharper: the error in your estimate shrinks from about 5.3% to 4.2%.',
+  acquirer: 'No deal fee, and your estimate on every company for sale is twice as tight.',
+  builder: 'A build arrives one round sooner and starts at 85% strength instead of 70%.',
+  ally: 'You get back 20% of your half of a joint win, and the alliance dividend doubles.',
+  integrator: 'Integrate costs half, and a pair that fits keeps all its synergy from the first round.',
+  operator: 'Money you put into businesses returns 15% more, and a Turnaround still works at half strength when the whole industry is down.',
+  analyst: 'One Deep dive each round uses no attention.',
+  leanhq: 'The cost of running many businesses is 30% lower.',
+  portfolio: 'A market sale pays 95% of value instead of 85%.',
+  risk: 'Protect costs half and blocks 75% of the damage instead of 50%.',
 };

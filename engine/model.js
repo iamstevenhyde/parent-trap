@@ -125,14 +125,14 @@ export function kappa(cfg, n, u, s) {
 export function sigmaFor(state, teamId) { return state.teams[teamId].isBot ? state.cfg.BOT_SIGMA : state.cfg.SIGMA_SIGNAL; }
 
 function lnEpsPrior(state, teamId, unitId) {
-  const sg = sigmaFor(state, teamId);
+  const sg = sigmaFor(state, teamId) * (state.teams[teamId].capabilities.acquirer ? state.cfg.ACQ_SIGMA_MULT : 1);   // Acquirer: estimates twice as tight
   return { ln: -sg * sg / 2 + sg * keyedNormal(state.seed, 'signal', teamId, unitId), sd: sg };
 }
 // Team's effective log-error for a unit after any deep dive (precision weighted).
 export function lnEpsTeam(state, teamId, unitId) {
   const t = state.teams[teamId], p = lnEpsPrior(state, teamId, unitId);
   if (!t.deep[unitId]) return p;
-  const sd = t.capabilities.analyst ? state.cfg.SIGMA_DEEP_ANALYST : state.cfg.SIGMA_DEEP;
+  const sd = state.cfg.SIGMA_DEEP;
   const dl = -sd * sd / 2 + sd * keyedNormal(state.seed, 'deepdive', teamId, unitId);
   const wp = (1 / (p.sd * p.sd)) / ((1 / (p.sd * p.sd)) + (1 / (sd * sd)));
   const comb = 1 / Math.sqrt(1 / (p.sd * p.sd) + 1 / (sd * sd));
@@ -154,7 +154,7 @@ export function requestsOf(unit) { return CO[unit.co].capital_requests; }
 export function cheaperIdx(unit) { const r = requestsOf(unit); return r[0].cost_musd <= r[1].cost_musd ? 0 : 1; }
 export function costlierIdx(unit) { return 1 - cheaperIdx(unit); }
 export function rhoFor(cfg, kind, nGrowth, operator) {
-  if (kind === 'growth') return cfg.RHO_GROWTH * Math.pow(cfg.RHO_DECAY, nGrowth) + (operator ? cfg.OPERATOR_RHO_BONUS : 0);
+  if (kind === 'growth') return cfg.RHO_GROWTH * Math.pow(cfg.RHO_DECAY, nGrowth) + (operator ? cfg.OPERATOR_RHO_MULT * cfg.RHO_GROWTH * Math.pow(cfg.RHO_DECAY, nGrowth) : 0);
   return kind === 'defend' ? cfg.RHO_DEFEND : cfg.RHO_LOCK;
 }
 export function applyInsurance(ins, t, m) {
@@ -163,7 +163,7 @@ export function applyInsurance(ins, t, m) {
   if (ins.kind === 'lock') return 1 + 0.5 * (m - 1);
   return m;
 }
-export function defendM(m) { return m >= 1 ? m : 1 - 0.5 * (1 - m); }
+export function defendM(m, block = 0.5) { return m >= 1 ? m : 1 - block * (1 - m); }
 
 // ---------- holdings and the bid meter ----------
 export function heldUnits(state, teamId) {
@@ -189,13 +189,21 @@ export function turnCost(state, teamId, u) {
   const base = Math.max(cfg.TURN_COST_MIN, cfg.TURN_COST_PCT * saOf(state, u));
   return { base, actual: op ? Math.max(cfg.TURN_COST_MIN, cfg.TURN_COST_PCT_OP * saOf(state, u)) : base };
 }
+// Skills (rules change 2026-10-29). A team that holds a skill gets its effect; every effect also writes an event line (core.js skillNote).
+export const hasSkill = (state, teamId, cap) => !!state.teams[teamId].capabilities[cap];
+export const buildTerms = (state, teamId) => (hasSkill(state, teamId, 'builder')
+  ? { delay: state.cfg.BUILDER_DELAY, strength: state.cfg.BUILDER_STRENGTH }
+  : { delay: state.cfg.BUILD_DELAY, strength: state.cfg.BUILD_STRENGTH });
+export const saleShare = (state, teamId) => (hasSkill(state, teamId, 'portfolio') ? state.cfg.PORTFOLIO_SALE : state.cfg.SALE_MARKET);
+export const hedgeBase = (chainId, sa) => Math.max(1, hedgePct(chainId) * sa);
+export const hedgeCost = (state, teamId, chainId, sa) => hedgeBase(chainId, sa) * (hasSkill(state, teamId, 'risk') ? state.cfg.RISK_COST_MULT : 1);
 export function hedgePct(chainId) {
   const m = /([\d.]+)% of/.exec(chainById[chainId].stage2.actions[0].cost);
   return m ? parseFloat(m[1]) / 100 : 0.03;
 }
 export function buildCostOf(state, teamId, unitId) {
   const cfg = state.cfg, cat = CO[state.units[unitId].co].value_musd;
-  return { base: cfg.BUILD_COST * cat, actual: (state.teams[teamId].capabilities.acquirer ? cfg.BUILD_COST_ACQ : cfg.BUILD_COST) * cat };
+  return { base: cfg.BUILD_COST * cat, actual: cfg.BUILD_COST * cat };
 }
 export function actionCash(state, teamId, a) {
   const cfg = state.cfg;
@@ -203,7 +211,7 @@ export function actionCash(state, teamId, a) {
     case 'integrate': return integrateCost(state, teamId, state.units[a.a], state.units[a.b]).actual;
     case 'turnaround': return turnCost(state, teamId, state.units[a.unit]).actual;
     case 'devcap': return cfg.DEVCAP_COST;
-    case 'hedge': return Math.max(1, hedgePct(a.chain) * saOf(state, state.units[a.unit]));
+    case 'hedge': return hedgeCost(state, teamId, a.chain, saOf(state, state.units[a.unit]));
     default: return 0;
   }
 }

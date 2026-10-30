@@ -5,10 +5,11 @@
 import {
   CO, saOf, valueOf, heldUnits, pairEffect, relatedPair, kappa, budgetOf, feeRate, requestsOf, rhoFor, applyInsurance,
   defendM, makeUnit, integrateCost, turnCost, buildCostOf, hedgePct, matrixSigma, pairAsset, clamp, lineCap,
+  buildTerms, hasSkill, saleShare, hedgeBase, hedgeCost,
 } from './model.js';
 import { chainById } from './schedule.js';
 import { keyedNormal } from './rng.js';
-import { emit, post, money, openSpell, openSpellOf, closeSpell, evOf, normalizeDecision, useCap } from './core.js';
+import { emit, post, money, openSpell, openSpellOf, closeSpell, evOf, normalizeDecision, earnSkill, skillNote, skillCount, CAP_LABEL } from './core.js';
 import { applyDeepDivesFor, botDecide } from './bots.js';
 
 const allTeams = state => [...state.teamIds, ...state.botIds];
@@ -73,10 +74,16 @@ function clearAuctions(state, ctx) {
       emit(state, { type: 'auction_won', team: id, unit: u.id, price: paid, paidShare: pay, trueValue: trueNow, text: 'You won ' + co + '. You paid ' + money(pay) + (winner.teams.length > 1 ? ' as your half of the joint bid' : '') + '. Its real value under your ownership is ' + money(trueNow * w) + '.' });
       if (paid > trueNow) emit(state, { type: 'winners_curse', team: id, unit: u.id, price: paid, trueValue: trueNow, text: 'Winner\'s curse: you overpaid. You paid ' + money(paid) + ' for ' + co + '. After the reveal, it is worth ' + money(trueNow) + '. You lost ' + money(paid - trueNow) + ' on this deal. The team with the highest guess usually wins, and the highest guess is usually too high.' });
       else emit(state, { type: 'good_buy', team: id, unit: u.id, price: paid, trueValue: trueNow, text: 'Good buy. You paid ' + money(paid) + ' for something worth ' + money(trueNow) + '.' });
-      if (paid <= trueNow * 1.0001) useCap(state, id, 'acquirer');
+      if (feeBase > 0 && feeAct === 0) skillNote(state, id, 'acquirer', 'no deal fee on ' + co + '. You saved ' + money(feeBase) + '.', feeBase);
       if (winner.teams.length > 1) {   // alliance dividend: a won co-bid pays each partner cash now and one extra action next round
-        tm.cash += cfg.COBID_CASH; post(state, id, 'T3', cfg.COBID_CASH); tm.attBonusRound = t + 1;
-        emit(state, { type: 'alliance_dividend', team: id, amount: cfg.COBID_CASH, text: 'Alliance dividend: +' + money(cfg.COBID_CASH) + ' and +' + cfg.COBID_ATT + ' action next round. You won ' + co + ' together with another team.' });
+        const ally = hasSkill(state, id, 'ally'), div = cfg.COBID_CASH * (ally ? cfg.ALLY_DIV_MULT : 1);
+        tm.cash += div; post(state, id, 'T3', cfg.COBID_CASH); post(state, id, 'T5', div - cfg.COBID_CASH); tm.attBonusRound = t + 1;
+        emit(state, { type: 'alliance_dividend', team: id, amount: div, text: 'Alliance dividend: +' + money(div) + ' and +' + cfg.COBID_ATT + ' action next round. You won ' + co + ' together with another team.' });
+        if (ally) {
+          const back = cfg.ALLY_REBATE * pay;
+          tm.cash += back; post(state, id, 'T5', back);
+          skillNote(state, id, 'ally', 'the dividend doubled to ' + money(div) + ' (' + money(div - cfg.COBID_CASH) + ' extra) and you got back ' + money(back) + ' of your half of the price.', div - cfg.COBID_CASH + back);
+        }
       }
     }
     if (winner.unmatchedAlly) emit(state, { type: 'ally_unmatched', team: winner.teams[0], text: 'Your partner did not match the co-bid, so it went in as your own bid.' });
@@ -134,22 +141,25 @@ function applyActions(state, ctx) {
           state.listings.push({ unit: u.id, seller: id, f: a.f, sa, price, created: t, visible: t + 1 });
           emit(state, { type: 'listing_posted', team: id, unit: u.id, price, text: 'You listed ' + CO[u.co].name + ' for ' + money(price) + ' (' + Math.round(a.f * 100) + ' percent of its stand-alone value). It shows to other tables next round.' });
         } else {
-          const proceeds = cfg.SALE_MARKET * sa;
-          tm.cash += proceeds; post(state, id, 'T3', proceeds - sa); post(state, id, 'T4', -u.Z);
+          const share = saleShare(state, id), proceeds = share * sa;
+          tm.cash += proceeds; post(state, id, 'T3', cfg.SALE_MARKET * sa - sa); post(state, id, 'T5', proceeds - cfg.SALE_MARKET * sa); post(state, id, 'T4', -u.Z);
           closeSpell(state, id, u, t - 1, { type: 'sold', proceeds });
           dropProjects(state, id, u.id);
           u.owners = []; ctx.removed.add(u.id);
-          emit(state, { type: 'divest_market', team: id, unit: u.id, proceeds, text: 'You sold ' + CO[u.co].name + ' to the market for ' + money(proceeds) + ', which is 85 percent of its value on its own (' + money(sa) + ').' });
+          emit(state, { type: 'divest_market', team: id, unit: u.id, proceeds, text: 'You sold ' + CO[u.co].name + ' to the market for ' + money(proceeds) + ', which is ' + Math.round(share * 100) + ' percent of its value on its own (' + money(sa) + ').' });
+          if (hasSkill(state, id, 'portfolio')) skillNote(state, id, 'portfolio', 'you got ' + money(proceeds - cfg.SALE_MARKET * sa) + ' more than a normal market sale of ' + CO[u.co].name + ' would pay.', proceeds - cfg.SALE_MARKET * sa);
         }
       }
     }
     for (const b of d.builds) {
       const lot = state.lotsByKey[b.lot];
       if (!lot) continue;
-      const c = buildCostOf(state, id, lot.unitId);
+      const c = buildCostOf(state, id, lot.unitId), bt = buildTerms(state, id);
       tm.cash -= c.actual;
-      tm.cip.push({ co: state.units[lot.unitId].co, cost: c.actual, costBase: c.base, order: t, completeAfter: t + cfg.BUILD_DELAY - 1 });
-      emit(state, { type: 'build_ordered', team: id, unit: lot.unitId, cost: c.actual, auto: !!b.auto, text: b.auto ? 'The game charged ' + money(c.actual) + ' from your cash for the new ' + CO[state.units[lot.unitId].co].name + ' it ordered for you. You did not order it. It arrives in round ' + (t + cfg.BUILD_DELAY) + ' at ' + Math.round(cfg.BUILD_STRENGTH * 100) + ' percent strength.' : 'You ordered a new ' + CO[state.units[lot.unitId].co].name + ' for ' + money(c.actual) + '. It arrives in round ' + (t + cfg.BUILD_DELAY) + ' at ' + Math.round(cfg.BUILD_STRENGTH * 100) + ' percent strength.' });
+      tm.cip.push({ co: state.units[lot.unitId].co, cost: c.actual, costBase: c.base, order: t, completeAfter: t + bt.delay - 1, strength: bt.strength });
+      const arrive = 'It arrives in round ' + (t + bt.delay) + ' at ' + Math.round(bt.strength * 100) + ' percent strength.';
+      emit(state, { type: 'build_ordered', team: id, unit: lot.unitId, cost: c.actual, auto: !!b.auto, text: b.auto ? 'The game charged ' + money(c.actual) + ' from your cash for the new ' + CO[state.units[lot.unitId].co].name + ' it ordered for you. You did not order it. ' + arrive : 'You ordered a new ' + CO[state.units[lot.unitId].co].name + ' for ' + money(c.actual) + '. ' + arrive });
+      if (hasSkill(state, id, 'builder')) skillNote(state, id, 'builder', 'this build arrives ' + (cfg.BUILD_DELAY - bt.delay) + ' round sooner and at ' + Math.round(bt.strength * 100) + ' percent strength instead of ' + Math.round(cfg.BUILD_STRENGTH * 100) + '.');
     }
     for (const a of d.actions) {
       if (a.type === 'integrate') {
@@ -159,7 +169,10 @@ function applyActions(state, ctx) {
         tm.cash -= c.actual; ctx.W[id]++;
         tm.projects.push({ a: A.id, b: B.id, start: t, pays });
         addFlow(state, id, A.id, 'act', c.actual / 2); addFlow(state, id, B.id, 'act', c.actual / 2);
-        if (pays) { post(state, id, 'T4', -c.base); post(state, id, 'T5', c.base - c.actual); useCap(state, id, 'integrator'); }
+        if (pays) {
+          post(state, id, 'T4', -c.base); post(state, id, 'T5', c.base - c.actual);
+          if (hasSkill(state, id, 'integrator')) skillNote(state, id, 'integrator', 'this Integrate cost ' + money(c.actual) + ' instead of ' + money(c.base) + '. A fitting pair keeps all its synergy from the first round.', c.base - c.actual);
+        }
         else {
           post(state, id, 'T7', -c.actual);
           emit(state, { type: 'synergy_not_earned', team: id, units: [A.id, B.id], cost: c.actual, text: 'You ran an Integrate project on ' + CO[A.co].name + ' and ' + CO[B.co].name + ', but they do not really share anything. Nothing was gained. Use a Deep dive next time to check.' });
@@ -170,33 +183,36 @@ function applyActions(state, ctx) {
         const c = turnCost(state, id, u), V = valueOf(state, u);
         const struggling = (t > 1 && state.world.M[u.co][t - 1] < cfg.STRUGGLE_M) || (u.Vprev !== null && V < cfg.STRUGGLE_V * u.Vprev);
         const industryCaused = t > 1 && state.world.indMean[u.ind][t - 1] < cfg.INDUSTRY_M;
-        const ok = struggling && !industryCaused, op = tm.capabilities.operator;
+        const op = tm.capabilities.operator, ok = struggling && (!industryCaused || op), half = industryCaused && op;
         tm.cash -= c.actual; ctx.W[id]++; u.lastTurn = t;
         addFlow(state, id, u.id, 'act', c.actual);
         if (ok) {
-          const base = cfg.TURN_GAIN * V, gain = (op ? cfg.TURN_GAIN_OP : cfg.TURN_GAIN) * V;
+          const base = half ? 0 : cfg.TURN_GAIN * V, gain = (op ? cfg.TURN_GAIN_OP : cfg.TURN_GAIN) * V * (half ? cfg.OPERATOR_DOWN_SHARE : 1);
           u.tn = { gain, base };
           post(state, id, 'T2', -c.base); post(state, id, 'T5', c.base - c.actual);
-          useCap(state, id, 'operator');
+          if (op) skillNote(state, id, 'operator', half ? 'the Turnaround at ' + CO[u.co].name + ' still worked at half strength although the whole industry is down.' : 'the Turnaround at ' + CO[u.co].name + ' cost ' + money(c.actual) + ' instead of ' + money(c.base) + ' and wins back more.', c.base - c.actual);
         } else post(state, id, 'T7', -c.actual);
         emit(state, { type: ok ? 'turnaround_worked' : 'turnaround_failed', team: id, unit: u.id, cost: c.actual, text: ok ? 'Turnaround at ' + CO[u.co].name + ' worked. Its problem was the firm, not the industry. Value rises next round.' : 'Turnaround at ' + CO[u.co].name + ' did nothing because ' + (struggling ? 'the whole industry is hurting' : 'the unit was not struggling') + '. The ' + money(c.actual) + ' is gone.' });
       } else if (a.type === 'devcap') {
+        if (t > cfg.DEVCAP_LAST_ROUND || tm.capabilities[a.cap] || tm.pendingSkills.includes(a.cap) || skillCount(tm) + tm.pendingSkills.length >= cfg.MAX_SKILLS) continue;   // refused: closed in round 5, already held, or two skills held
         tm.cash -= cfg.DEVCAP_COST; tm.devSpend[a.cap] += cfg.DEVCAP_COST; ctx.W[id]++;
         post(state, id, 'T5', -cfg.DEVCAP_COST);
         tm.hist[t] = tm.hist[t] || { cc: 0, fin: 0, act: 0, sumV: 0 };
         tm.hist[t].act += cfg.DEVCAP_COST;
-        useCap(state, id, a.cap);
+        tm.pendingSkills.push(a.cap);   // the skill starts next round (applied at the end of this one)
+        emit(state, { type: 'capability_progress', team: id, capability: a.cap, text: 'Develop capability: you paid ' + money(cfg.DEVCAP_COST) + ' and earn ' + CAP_LABEL[a.cap] + '. It works from next round.' });
       } else if (a.type === 'deepdive') {
-        useCap(state, id, 'analyst');
+        if (tm.capabilities.analyst && !tm.freeNoted[t] && cfg.ANALYST_FREE_DEEP > 0) { tm.freeNoted[t] = true; skillNote(state, id, 'analyst', 'one Deep dive this round used no attention.'); }
         if (a.pair) ctx.W[id]++;
         emit(state, { type: 'deep_dive', team: id, text: a.lot ? 'Deep dive on ' + CO[state.units[state.lotsByKey[a.lot].unitId].co].name + ': your estimate is tighter now.' : 'Deep dive on your pair: ' + (state.teams[id].known[[...a.pair].sort().join('+')].related ? 'they really share an asset.' : 'they do not really share anything.') });
       } else if (a.type === 'hedge') {
         const u = state.units[a.unit];
         if (!u.owners.some(o => o.team === id)) continue;
-        const cost = Math.max(1, hedgePct(a.chain) * saOf(state, u)), c = state.schedule.chains.find(x => x.id === a.chain);
-        tm.cash -= cost; ctx.W[id]++; u.hedges.push(a.chain); addFlow(state, id, u.id, 'act', cost);
-        post(state, id, c.yes ? 'T2' : 'T7', -cost);
+        const base = hedgeBase(a.chain, saOf(state, u)), cost = hedgeCost(state, id, a.chain, saOf(state, u)), c = state.schedule.chains.find(x => x.id === a.chain), risk = hasSkill(state, id, 'risk');
+        tm.cash -= cost; ctx.W[id]++; u.hedges.push(a.chain); if (risk) (u.hedgeStrong = u.hedgeStrong || []).push(a.chain); addFlow(state, id, u.id, 'act', cost);
+        post(state, id, c.yes ? 'T2' : 'T7', -base); if (risk) post(state, id, 'T5', base - cost);
         emit(state, { type: 'hedge_bought', team: id, unit: u.id, chain: a.chain, cost, text: 'You paid ' + money(cost) + ' to protect ' + CO[u.co].name + ' against ' + chainById[a.chain].name.toLowerCase() + '.' });
+        if (risk) skillNote(state, id, 'risk', 'this Protect cost ' + money(cost) + ' instead of ' + money(base) + ' and blocks ' + Math.round(cfg.RISK_BLOCK * 100) + ' percent of the damage instead of 50.', base - cost);
       }
     }
   }
@@ -219,6 +235,7 @@ function applyCapital(state, ctx) {
     const op = u.owners.length === 1 && state.teams[u.owners[0].team].capabilities.operator;
     const rhoBase = rhoFor(cfg, req.kind, u.nGrowth, false), rho = rhoFor(cfg, req.kind, u.nGrowth, op);
     u.cap = { C, kind: req.kind, K: rho * C, Kbase: rhoBase * C };
+    if (op && req.kind === 'growth') skillNote(state, u.owners[0].team, 'operator', 'your ' + money(C) + ' in ' + CO[u.co].name + ' adds about ' + money(rho * C - rhoBase * C) + ' more lasting value than it would without the skill.', rho * C - rhoBase * C);
     if (req.kind === 'growth') u.nGrowth++; else u.ins = { kind: req.kind, from: t + 1, until: t + 2 };
     for (const o of u.owners) {
       state.teams[o.team].cash -= C * o.w; post(state, o.team, 'T2', -C * o.w);
@@ -231,7 +248,7 @@ function applyCapital(state, ctx) {
 function hedgedM(state, u, t) {
   const list = state.world.Mc[u.co][t];
   if (!u.hedges.length) return state.world.M[u.co][t];
-  return clamp(list.reduce((p, c) => p * (u.hedges.includes(c.id) ? defendM(c.m) : c.m), 1), state.cfg.M_CLAMP[0], state.cfg.M_CLAMP[1]);
+  return clamp(list.reduce((p, c) => p * (u.hedges.includes(c.id) ? defendM(c.m, (u.hedgeStrong || []).includes(c.id) ? state.cfg.RISK_BLOCK : 0.5) : c.m), 1), state.cfg.M_CLAMP[0], state.cfg.M_CLAMP[1]);
 }
 
 function earnings(state, ctx) {
@@ -263,9 +280,10 @@ function earnings(state, ctx) {
       if (eff.sigma === 0) continue;
       let r = 1, rb = 1;
       if (eff.sigma > 0) {
-        const idx = t - proj.start - 1, ramp = cfg.INT_RAMP[Math.min(idx, cfg.INT_RAMP.length - 1)];
-        r = (tm.capabilities.integrator ? cfg.INT_REAL_CAP : cfg.INT_REAL) * ramp; rb = cfg.INT_REAL * ramp;
+        const idx = t - proj.start - 1, rampB = cfg.INT_RAMP[Math.min(idx, cfg.INT_RAMP.length - 1)], rampC = cfg.INT_RAMP_CAP[Math.min(idx, cfg.INT_RAMP_CAP.length - 1)];
+        r = tm.capabilities.integrator ? cfg.INT_REAL_CAP * rampC : cfg.INT_REAL * rampB; rb = cfg.INT_REAL * rampB;
         if (idx === 0) emit(state, { type: 'synergy_fired', team: id, units: [A.id, B.id], asset: pairAsset(A.ind, B.ind), amount: eff.sigma * r * (A.calc.base + B.calc.base), text: 'Synergy: ' + CO[A.co].name + ' and ' + CO[B.co].name + ' work better together. They share ' + pairAsset(A.ind, B.ind) + '. This adds ' + money(eff.sigma * r * (A.calc.base + B.calc.base)) + ' a round to your value, starting now.' });
+        if (idx === 0 && tm.capabilities.integrator) skillNote(state, id, 'integrator', 'the full synergy starts in the first round, ' + money(eff.sigma * (r - rb) * (A.calc.base + B.calc.base)) + ' more than without the skill.', eff.sigma * (r - rb) * (A.calc.base + B.calc.base));
       }
       if (eff.sigma < 0) {
         const key = [A.id, B.id].sort().join('+');
@@ -284,12 +302,13 @@ function earnings(state, ctx) {
       for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) { pairs++; if (!relatedPair(cfg, units[i], units[j])) unrel++; }
       const uShare = pairs ? unrel / pairs : 0, O = cfg.OVERSIGHT_PER_UNIT * (n - 1);
       const s = Math.min(3, Math.max(0, O - (ctx.W[id] || 0)));
-      const k = kappa(cfg, n, uShare, s);
-      cc = k * sumV; tm.cash -= cc; post(state, id, 'T6', -cc);
+      const kBase = kappa(cfg, n, uShare, s), lean = tm.capabilities.leanhq, k = kBase * (lean ? cfg.LEAN_KAPPA_MULT : 1);
+      cc = k * sumV; tm.cash -= cc; post(state, id, 'T6', -kBase * sumV); if (lean) post(state, id, 'T5', (kBase - k) * sumV);
       tm.hist[t].kappa = k; tm.hist[t].unfunded = s;
       let text = cc < 0.5 ? 'Complexity cost: none. Your portfolio is easy to run.' : 'Complexity cost: ' + money(cc) + '. Running ' + units.length + ' businesses that do not share much is hard. This round it cost ' + (k * 100).toFixed(1) + ' percent of your value. Related businesses and spare attention make it smaller.';
       if (s > 0.05 && cc >= 0.5) text += ' ' + s.toFixed(1) + ' attention points of oversight went unfunded.';
       emit(state, { type: 'complexity_charged', team: id, amount: cc, pct: k, text });
+      if (lean && (kBase - k) * sumV >= 0.5) skillNote(state, id, 'leanhq', 'running your businesses cost ' + money((kBase - k) * sumV) + ' less this round.', (kBase - k) * sumV);
     }
     // financing
     const up = state.world.ratesUp[t], lr = up ? cfg.RATES_UP.LINE_RATE : cfg.LINE_RATE, ir = up ? cfg.RATES_UP.IDLE_RATE : cfg.IDLE_RATE;
@@ -316,7 +335,7 @@ function updateValues(state, ctx) {
     const Bbase = drift * (1 + phi * (M - 1)), BnoCap = drift * (1 + phi * (Mp - 1));
     const K = u.cap ? u.cap.K : 0, Kb = u.cap ? u.cap.Kbase : 0, Tn = u.tn ? u.tn.gain : 0, Tnb = u.tn ? u.tn.base : 0;
     const Bn = BnoCap + K + Tn;
-    const sN = u.built ? Math.min(1, cfg.BUILD_STRENGTH + cfg.BUILD_STEP * (t + 1 - u.born)) : 1;
+    const sN = u.built ? Math.min(1, (u.bStr || cfg.BUILD_STRENGTH) + cfg.BUILD_STEP * (t + 1 - u.born)) : 1;
     const vmT = Vm[u.ind][t], vmN = Vm[u.ind][t + 1];
     let Zn = 0, Zbn = 0;
     if (owned && u.owners.length === 1) { Zn = cfg.SYN_CAP * c.esyn; Zbn = cfg.SYN_CAP * c.esynb; }
@@ -343,7 +362,7 @@ function joinsAndBuilds(state, ctx) {
   const t = state.round, cfg = state.cfg;
   for (const j of ctx.joins) {
     const u = j.unit;
-    u.owners = j.owners; u.Z = 0; u.Zb = 0; u.ins = null; u.hedges = []; u.cap = null; u.tn = null;
+    u.owners = j.owners; u.Z = 0; u.Zb = 0; u.ins = null; u.hedges = []; u.hedgeStrong = []; u.cap = null; u.tn = null;
     const v = valueOf(state, u);
     j.rec.valueAtJoin = v;
     for (const o of u.owners) { post(state, o.team, 'T3', o.w * v); openSpell(state, o.team, u, o.w, t + 1); }
@@ -354,13 +373,14 @@ function joinsAndBuilds(state, ctx) {
     for (const c of done) {
       const co = CO[c.co], uid = c.co + '+' + id + 'r' + c.order;
       const th = clamp(Math.exp(cfg.S_CLASS[co.growth] * keyedNormal(state.seed, 'build_theta', id, c.co, c.order)), cfg.THETA_CLAMP[0], cfg.THETA_CLAMP[1]);
-      const u = makeUnit(cfg, uid, co, co.value_musd * th, { built: true, born: t + 1, s: cfg.BUILD_STRENGTH, owners: [{ team: id, w: 1 }], srcCo: c.co });
+      const str = c.strength || cfg.BUILD_STRENGTH;
+      const u = makeUnit(cfg, uid, co, co.value_musd * th, { built: true, born: t + 1, s: str, bStr: str, owners: [{ team: id, w: 1 }], srcCo: c.co });
       state.units[uid] = u; state.unitIds.push(uid); state.unitIds.sort();
       const v = valueOf(state, u);
       post(state, id, 'T3', v - c.costBase); post(state, id, 'T5', c.costBase - c.cost);
       openSpell(state, id, u, 1, t + 1);
-      useCap(state, id, 'acquirer');
-      emit(state, { type: 'build_completed', team: id, unit: uid, value: v, text: 'Your new ' + co.name + ' is open at ' + Math.round(cfg.BUILD_STRENGTH * 100) + ' percent strength and is worth ' + money(v) + ' today. It reaches full strength in two more rounds.' });
+      const more = Math.ceil((1 - str) / cfg.BUILD_STEP - 1e-9);
+      emit(state, { type: 'build_completed', team: id, unit: uid, value: v, text: 'Your new ' + co.name + ' is open at ' + Math.round(str * 100) + ' percent strength and is worth ' + money(v) + ' today. It reaches full strength in ' + (more === 1 ? 'one more round' : more + ' more rounds') + '.' });
     }
   }
 }
@@ -440,7 +460,7 @@ export function clearOpeningAuction(state, { humanBids = {}, botBids = {} } = {}
   const sold = new Set();
   for (const j of ctx.joins) {
     const u = j.unit;
-    u.owners = j.owners; u.Z = 0; u.Zb = 0; u.ins = null; u.hedges = []; u.cap = null; u.tn = null;
+    u.owners = j.owners; u.Z = 0; u.Zb = 0; u.ins = null; u.hedges = []; u.hedgeStrong = []; u.cap = null; u.tn = null;
     const v = valueOf(state, u);
     j.rec.valueAtJoin = v;
     for (const o of u.owners) { post(state, o.team, 'T3', o.w * v); openSpell(state, o.team, u, o.w, t); }
@@ -481,6 +501,7 @@ export function resolveRound(state) {
   updateValues(state, ctx);
   joinsAndBuilds(state, ctx);
   sweep(state);
+  for (const id of allTeams(state)) { const tm = state.teams[id]; for (const cap of tm.pendingSkills) earnSkill(state, id, cap); tm.pendingSkills = []; }
   snapshot(state, t);
   state.phase = t >= 5 ? 'done' : 'resolved';
   return state;

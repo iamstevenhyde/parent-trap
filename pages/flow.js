@@ -14,7 +14,7 @@ export const STEPS = [
 export function flowFor(f) {
   const done = [];
   const mkt = f.hasMarket;
-  if (f.opening && !f.locked) return { step: 0, done, title: 'Opening auction', text: 'Bid for your third company. You started with two. When the auction closes, round 1 begins: you will see what you won, and the capital requests, corporate actions and the lock all open. If you win nothing, you can still bid in round 1. If you still have no new company at the end of round 1, the game orders one for you, and it arrives in round 3 at 70% strength.', mine: true };
+  if (f.opening && !f.locked) return { step: 0, done, title: 'Opening auction', text: 'Bid for your third company. You started with two. The three ways to a third business are Build, Buy and Ally. When the auction closes, round 1 begins: you will see what you won, and the capital requests, corporate actions and the lock all open. If you win nothing, you can still bid in round 1. If you still have no new company at the end of round 1, the game orders one for you, and it arrives in round 3 at 70% strength.', mine: true };
   switch (f.phase) {
     case 'lobby':
       return { step: 0, done, title: 'Waiting to start', text: 'Your instructor starts the game when every team has joined.', mine: false };

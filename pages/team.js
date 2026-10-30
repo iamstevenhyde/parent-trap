@@ -7,6 +7,7 @@ import { installGlossary } from './glossary.js';
 import { openStore, savedSeat, saveSeat, forgetSeat, resumeSeat, lookupCode, takeNewSeat, takeOverSeat, heartbeat } from './supa.js';
 import { roleFor, can, planFromRow, attentionUsed, meter, lockReason, activeSeats, ROLES_ON } from './roles.js';
 import { renderTopBar, renderBusinesses, renderActions, renderMarket, renderLock, renderSteps } from './team_zones.js';
+import { renderAllyAlerts } from './team_market.js';
 import { flowFor, liveBidPatch, coInvitePatch, coJoinPatch, leadsLot, shareOfLot } from './flow.js';
 import { resultsOverlay, resolvingOverlay, capabilitiesPanel, historyPanel, autopsy } from './team_overlays.js';
 
@@ -22,7 +23,7 @@ const mode = pageMode();
 function roundTip(ctx, g) {
   if (ctx.opening || (g.round === 1 && g.phase === 'market')) return 'The first bid must reach half of the listed value. Each later bid must beat the price by about 2.5 percent of listed value (at least $5M), and a bid in the last 8 seconds adds 8 seconds. The winner pays the price plus a 1.5 percent deal fee, and no bid can top three times the listed value. Locking is optional: if the clock runs out, the game uses your last saved plan and counts blanks as Hold.';
   if (g.round === 2) return 'Divest opens now. Sell a business to the market for 85 percent of its stand-alone value, or list it for other teams at 80, 100 or 120 percent. A listing appears next round at a fixed price, and you keep the business until someone takes it.';
-  if (g.round === 3) return 'Last round to order a build: a build takes two rounds to arrive at 70 percent strength.';
+  if (g.round === 3) return 'Last round to order a build: a build takes two rounds to arrive at 70 percent strength. Last round to develop a skill is round 4.';
   if (g.round === 4) return 'Last round with auction lots, and the last round to list a business. Round 5 offers only what other teams listed.';
   return null;
 }
@@ -255,6 +256,9 @@ document.addEventListener('focusout', () => setTimeout(() => { if (S.dirty && !t
 function tick() {
   const t = $('#timer');
   if (t && S.game && S.game.clock) t.textContent = (S.game.clock.paused ? 'PAUSED ' : '') + mmss(clockLeft()) + ' left';
+  // the red alert in the last 60 seconds of the opening auction appears on its own, without waiting for the next refresh
+  if (S.game && S.game.phase === 'market' && S.game.reveal && S.game.reveal.opening && S.view && clockLeft() <= 60000 && !$('.openingalert') && !S.alertTried) { S.alertTried = true; render(); }
+  if (S.game && S.game.phase !== 'market') S.alertTried = false;
 }
 
 function lobbyPanel(ctx) {
@@ -287,6 +291,9 @@ function render() {
   }
   root.append(renderTopBar(ctx), renderSteps(ctx));
   { const tip = roundTip(ctx, g); if (tip) root.append(h('p.banner.tip', [h('b', 'Rule for now: '), tip])); }
+  if (ctx.opening) root.append(h('p.banner.opening.autowarn', [h('b', 'If you win nothing here, the game orders a weaker copy of a company for you. '), 'It arrives in round ' + ctx.view.autoArrive + ' at ' + ctx.view.autoPct + ' percent strength. You can still win one in round 1. The three ways to a third business are Build, Buy and Ally.']));
+  if (ctx.opening && g.clock && !g.clock.paused && clockLeft() <= 60000 && !(ctx.led || []).length) root.append(h('p.alert.red.openingalert', { role: 'alert' }, 'Less than a minute left and you lead on nothing. Bid now, or the game orders a weaker copy that arrives in round ' + ctx.view.autoArrive + '.'));
+  for (const a of renderAllyAlerts(ctx)) root.append(a);
   if (ctx.opening) root.append(h('p.banner.opening', 'Opening auction. Every team bids for its third company now, before round 1 begins. Your capital requests, corporate actions and the lock open when the auction closes. A Deep dive on a company for sale works now. There are two prizes at the end: Biggest parent for the highest enterprise value, and Best parent for the most value added over what the businesses would be worth on their own.'));
   if (ctx.view.hostGrant > 0) root.append(h('p.banner.hostgrant', 'Host grant: your instructor has added ' + fmtM(ctx.view.hostGrant) + ' to your cash so far.'));
   if (ctx.live && ['news', 'market', 'decide'].includes(g.phase) && ctx.view.obl && ctx.view.obl.total > ctx.view.budget + 1e-9) root.append(h('p.banner.insolvent', 'Warning: about ' + fmtM(Math.ceil(ctx.view.obl.total)) + ' of interest and running costs come due at the end of this round, and your cash plus credit line is ' + fmtM(Math.floor(ctx.view.budget)) + '. Unless your businesses earn enough this round, the game will sell your weakest business. The market will not let you bid, and the lock will not accept new spending.'));

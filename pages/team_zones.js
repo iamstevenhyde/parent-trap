@@ -3,6 +3,7 @@
 
 import { h, fmtM, mmss, wordCount, pct } from './util.js';
 import { gl, CAP_TEXT } from './glossary.js';
+import { coLimit } from './team_market.js';
 import { icon, IND, artUrl, SCENE, LAST_CALL_ROUND } from './art.js';
 import { meter, attentionUsed, lockReason, describeAction, OWNER_LABEL, can, ROLES_ON } from './roles.js';
 
@@ -134,14 +135,18 @@ const ACTION_ROWS = [
     pays: 'Only when the business is the problem, not its whole industry. It then gains about 12% of its value next round.',
     costs: () => 'About 4% of the business\'s value, at least $8M, plus 1 attention. Once per business every two rounds.' },
   { key: 'devcap', perm: 'ops', title: 'Develop capability', gloss: 'capability', first: true,
-    line: 'Practice a move to earn a lasting skill: Acquirer, Integrator, Operator or Analyst.',
-    pays: 'Two of the same kind of move earn the skill, and this counts as one, so start early. Wasted if you never earn it.',
+    line: 'Pay to earn a lasting skill. Pick one of nine. Your team can hold two.',
+    pays: 'The skill works from next round, so earlier is better. Closed in round 5.',
     costs: (v) => fmtM(v.costs.devcap) + ' plus 1 attention.' },
+  { key: 'ally', perm: 'market', title: 'Ally: bid together', gloss: 'cobid',
+    line: 'Ask another team to bid with you on one company. You each pay half and own half.',
+    pays: 'It counts as your third business only if you win together. A joint win pays each of you a dividend.',
+    costs: (v) => 'No cash until you win. In a sealed round it uses 1 attention. The dividend is ' + fmtM(v.allyDividend) + ' and 1 extra action next round.' },
   { key: 'divest', perm: 'market', title: 'Divest', line: 'Sell a business to the market now, or list it for other teams.',
-    pays: 'Market sale: 85% of its stand-alone value in cash this round. Listing: you set 80%, 100% or 120%, and if another team buys it next round you get that price; if not, you keep it. Divest is open rounds 2 to 5, listing rounds 2 to 4.',
+    pays: 'Market sale: 85% of its stand-alone value in cash this round (95% with Portfolio manager). Listing: you set 80%, 100% or 120%, and if another team buys it next round you get that price; if not, you keep it. Divest is open rounds 2 to 5, listing rounds 2 to 4.',
     costs: () => 'The 15% haircut on a market sale, plus 1 attention.' },
   { key: 'hedge', perm: 'ops', title: 'Protect', line: 'Cut the damage a risk in the news could do to one business.',
-    pays: 'If the risk hits, the damage is halved; if not, the money is lost. Each risk can be protected against for two rounds after it first appears.',
+    pays: 'If the risk hits, the damage is halved (cut by three quarters with Risk manager); if not, the money is lost. Each risk can be protected against for two rounds after it first appears.',
     costs: () => 'A few percent of the business\'s value (shown when you choose), plus 1 attention.' },
 ];
 const CAP_BENEFIT = CAP_TEXT;
@@ -152,7 +157,8 @@ function notRelevant(ctx, key) {
   switch (key) {
     case 'integrate': return view.pairs.some(x => !x.exists) ? null : 'You need two businesses you fully own with no Integrate project yet.';
     case 'turnaround': return view.units.some(u => u.canTurn && u.stress) ? null : (view.units.some(u => u.stress) ? 'The business that is losing money had a Turnaround too recently.' : 'None of your businesses is losing money, so a Turnaround has nothing to fix.');
-    case 'devcap': return view.capList.some(c => !view.capabilities[c]) ? null : 'You already have every capability.';
+    case 'devcap': return !view.devcapOpen ? 'Develop capability is closed in round 5. It could not pay off in time.' : (view.skillCount + view.pendingSkills.length >= view.maxSkills ? 'Your team already holds ' + view.maxSkills + ' skills.' : null);
+    case 'ally': return ctx.game.round >= 5 ? 'Round 5 has no auction, so there is nothing to bid on together.' : (!view.teams.filter(t => t.id !== view.teamId).length ? 'No other team has players to ally with.' : (view.lots.some(l => l.kind === 'auction' && !l.own) ? null : 'Nothing is for sale to bid on together.'));
     case 'divest': return ctx.game.round < 2 ? 'Divest opens in round 2.' : (view.divest.length ? null : 'You have no business to sell.');
     case 'hedge': return view.hedges.length ? null : 'No risk in the news right now can be protected against.';
     case 'deepdive': return (view.lots.some(l => !l.own && !l.deep) || view.pairs.some(x => !x.known)) ? null : 'Everything you could look into is already checked.';
@@ -201,13 +207,34 @@ function pickerFor(ctx, key) {
       h('p.sub', 'Cost ' + fmtM(cur.turnCost) + '. It works only if the problem is the business and not the whole industry.'),
       h('button.go', { type: 'button', onclick: () => add({ type: 'turnaround', unit: cur.id }) }, 'Add Turnaround'), cancel);
   } else if (key === 'devcap') {
-    const caps = view.capList.filter(c => !view.capabilities[c] && !plan.actions.some(a => a.type === 'devcap' && a.cap === c));
-    if (!caps.length) return h('div.picker', 'Nothing left to develop.');
+    const room = view.maxSkills - view.skillCount - view.pendingSkills.length - plan.actions.filter(a => a.type === 'devcap').length;
+    if (room <= 0) return h('div.picker', 'Your team already holds ' + view.maxSkills + ' skills, so the other skills are hidden.');
+    const caps = view.capList.filter(c => !view.capabilities[c] && !view.pendingSkills.includes(c) && !plan.actions.some(a => a.type === 'devcap' && a.cap === c));
     p.cap = p.cap && caps.includes(p.cap) ? p.cap : caps[0];
-    form.append(select(caps.map(c => [c, view.capLabels[c] + ' (' + view.uses[c] + ' of 2 uses)']), v => { p.cap = v; ctx.rerender(); }, p.cap),
-      h('p.sub', 'Cost ' + fmtM(view.costs.devcap) + '. Counts as one use. Once you have two uses of ' + view.capLabels[p.cap] + ', the skill is yours for the rest of the game.'),
+    form.append(select(caps.map(c => [c, view.capLabels[c]]), v => { p.cap = v; ctx.rerender(); }, p.cap),
+      h('p.sub', 'Cost ' + fmtM(view.costs.devcap) + '. One payment earns ' + view.capLabels[p.cap] + ' for the rest of the game, starting next round. You can hold ' + view.maxSkills + ' skills.'),
       h('ul.capinfo', caps.map(c => h('li' + (c === p.cap ? '.sel' : ''), [h('b', view.capLabels[c] + ': '), CAP_BENEFIT[c]]))),
       h('button.go', { type: 'button', onclick: () => add({ type: 'devcap', cap: p.cap }) }, 'Add Develop capability'), cancel);
+  } else if (key === 'ally') {
+    // Ally: bid together. Partner, company and the most you will pay in total. It creates the same co-bid invitation the Market column makes.
+    const mk = ctx.live && ctx.hasMarket && ctx.market ? ctx.market.lots : null;
+    const lots = (mk ? mk.filter(l => !l.fixed && l.seller !== view.teamId) : view.lots.filter(l => l.kind === 'auction' && !l.own)).map(l => ({ key: l.key, name: l.name, next: l.next || 0 }));
+    const others = view.teams.filter(t => t.id !== view.teamId);
+    if (!lots.length || !others.length) return h('div.picker', 'Nothing to bid on together right now.');
+    p.lot = p.lot && lots.some(l => l.key === p.lot) ? p.lot : lots[0].key;
+    p.partner = p.partner && others.some(t => t.id === p.partner) ? p.partner : others[0].id;
+    const cur = lots.find(l => l.key === p.lot), lim = mk ? coLimit(ctx, mk.find(l => l.key === p.lot), p.partner) : null;
+    const amt = h('input', { type: 'number', min: 0, step: 5, value: p.amount || '', placeholder: cur.next ? 'Most you will pay, at least ' + Math.round(cur.next) : 'Most you will pay, $M', 'aria-label': 'Most you will pay together, in millions', oninput: e => { p.amount = e.target.value; } });
+    form.append(select(lots.map(l => [l.key, l.name]), v => { p.lot = v; ctx.rerender(); }, p.lot), select(others.map(t => [t.id, t.name]), v => { p.partner = v; ctx.rerender(); }, p.partner), amt,
+      h('p.sub', 'You each pay half of the price and own half. Your partner sees an alert and can Accept or Decline.' + (lim !== null ? ' The most the two of you can bid together right now is ' + fmtM(lim) + '.' : '')),
+      h('button.go', { type: 'button', onclick: () => {
+        const a = Number(p.amount);
+        if (!(a > 0)) { ctx.toast('Type the most you will pay first.'); return; }
+        if (lim !== null && a > lim + 1e-9) { ctx.toast('Too much for one of your halves. The most the two of you can bid together is ' + fmtM(lim) + '.'); return; }
+        if (mk) ctx.coInvite(p.lot, p.partner, a);
+        else ctx.write({ market: { bids: [...plan.bids.filter(b => b.lot !== p.lot), { lot: p.lot, amount: a, ally: p.partner }], builds: plan.builds } });
+        ctx.ui.picker = null; p.amount = ''; ctx.rerender();
+      } }, 'Send the invite'), cancel);
   } else if (key === 'deepdive') {
     const opts = [];
     if (ctx.editable('market')) for (const l of view.lots) if (!l.own && !l.deep && !plan.actions.some(a => a.lot === l.key)) opts.push(['lot:' + l.key, 'Company for sale: ' + l.name]);
@@ -222,9 +249,9 @@ function pickerFor(ctx, key) {
     if (!us.length) return h('div.picker', 'No business to sell.');
     p.unit = p.unit && us.some(d => d.unit === p.unit) ? p.unit : us[0].unit;
     const cur = us.find(d => d.unit === p.unit), nm = id => view.units.find(u => u.id === id).name;
-    const modes = [['market', 'Sell to the market for ' + fmtM(cur.market) + ' (85% of stand-alone value, cash this round)'], ...cur.list.map(l => ['list:' + l.f, 'List for other teams at ' + Math.round(l.f * 100) + '% of stand-alone value (' + fmtM(l.price) + '), shown next round, you keep it until someone takes it'])];
+    const modes = [['market', 'Sell to the market for ' + fmtM(cur.market) + ' (' + cur.marketPct + '% of stand-alone value, cash this round)'], ...cur.list.map(l => ['list:' + l.f, 'List for other teams at ' + Math.round(l.f * 100) + '% of stand-alone value (' + fmtM(l.price) + '), shown next round, you keep it until someone takes it'])];
     p.mode = p.mode && modes.some(m => m[0] === p.mode) ? p.mode : 'market';
-    form.append(select(us.map(d => [d.unit, nm(d.unit)]), v => { p.unit = v; ctx.rerender(); }, cur.unit), h('p.sub', 'Stand-alone value ' + fmtM(cur.sa) + '. 85% = ' + fmtM(cur.market) + '.' + (cur.list.length ? '' : ' Listing for other teams is open in rounds 2 to 4, so it is not offered this round.')), select(modes, v => { p.mode = v; }, p.mode),
+    form.append(select(us.map(d => [d.unit, nm(d.unit)]), v => { p.unit = v; ctx.rerender(); }, cur.unit), h('p.sub', 'Stand-alone value ' + fmtM(cur.sa) + '. ' + cur.marketPct + '% = ' + fmtM(cur.market) + '.' + (cur.list.length ? '' : ' Listing for other teams is open in rounds 2 to 4, so it is not offered this round.')), select(modes, v => { p.mode = v; }, p.mode),
       h('button.go', { type: 'button', onclick: () => add(p.mode === 'market' ? { type: 'divest', unit: cur.unit, mode: 'market' } : { type: 'divest', unit: cur.unit, mode: 'list', f: Number(p.mode.split(':')[1]) }) }, 'Add Divest'), cancel);
   } else if (key === 'hedge') {
     if (!view.hedges.length) return h('div.picker', 'No risk in the news can be protected against right now.');
@@ -238,7 +265,7 @@ function pickerFor(ctx, key) {
 }
 
 export function renderActions(ctx) {
-  const { view, plan } = ctx, used = attentionUsed(plan, view.liveAuction), full = used >= view.attMax;
+  const { view, plan } = ctx, used = attentionUsed(plan, view.liveAuction, view.freeDeep), full = used >= view.attMax;
   const anyOk = ctx.editable('ops') || ctx.editable('market');
   const zone = h('section.zone.zone-act' + (anyOk ? '' : '.grey'), { dataset: { zone: 'act' } });
   zone.append(h('h2', ['Corporate actions ', noteDot(ctx, 'ops'), suggestBar(ctx, 'ops')]));
@@ -257,18 +284,17 @@ export function renderActions(ctx) {
   for (const r of ACTION_ROWS) {
     const ok = ctx.editable(r.perm), open = ctx.ui.picker && ctx.ui.picker.key === r.key, irrelevant = notRelevant(ctx, r.key), here = irrelevant ? '' : whyHere(ctx, r.key);
     const row = h('div.arow' + (ok && !full && !irrelevant ? '' : '.dim'), { title: ok ? '' : greyTip(ctx, r.perm) }, [
-      h('div.arow-main', [h('b', r.gloss ? gl(r.gloss, r.title) : r.title), h('span.cost', '1 attention')]),
+      h('div.arow-main', [h('b', r.gloss ? gl(r.gloss, r.title) : r.title), h('span.cost', r.key === 'ally' && view.liveAuction ? 'no attention' : '1 attention')]),
       h('p.sub', r.line),
       h('p.sub.pays', [h('b', 'When it pays: '), r.pays]),
       h('p.sub.costs', [h('b', 'Cost: '), r.costs(view)]),
-      ctx.game.round === 1 && r.first && !irrelevant ? h('p.sub.first', 'A natural first move in round 1' + (r.key === 'integrate' ? ' if a Deep dive says the pair fits.' : r.key === 'devcap' ? ': it takes two uses to earn a skill.' : '.')) : null,
+      ctx.game.round === 1 && r.first && !irrelevant ? h('p.sub.first', 'A natural first move in round 1' + (r.key === 'integrate' ? ' if a Deep dive says the pair fits.' : r.key === 'devcap' ? ': one payment earns a skill.' : '.')) : null,
       irrelevant ? h('p.sub.notnow', 'Not on the table now: ' + irrelevant) : (here ? h('p.sub.here', here) : null),
       h('button.add', { type: 'button', disabled: !ok || full || ctx.locked || !!irrelevant, onclick: () => { ctx.ui.picker = open ? null : { key: r.key }; ctx.rerender(); } }, open ? 'Close' : 'Choose'),
     ]);
     zone.append(row);
     if (open) zone.append(pickerFor(ctx, r.key));
   }
-  if (!view.liveAuction) zone.append(h('div.arow.info', [h('b', gl('cobid', 'Ally')), h('p.sub', 'Co-bid with one other team. You split the price and the result 50/50. Start it from a company in the Market column.')]));
   // picks
   if (plan.actions.length) {
     zone.append(h('h3', 'Your picks'));
@@ -335,9 +361,9 @@ export function renderMarket(ctx) {
       else {
         buttons.push(h('button', { type: 'button', disabled: !ok || !!bid, onclick: () => { ui.open = { key: l.key, mode: 'bid' }; ui.bidform = { amount: '' }; ctx.rerender(); } }, 'Bid'));
         buttons.push(h('button', { type: 'button', disabled: !ok || !!bid || !view.teams.filter(t => t.id !== view.teamId).length, onclick: () => { ui.open = { key: l.key, mode: 'co' }; ui.bidform = { amount: '' }; ctx.rerender(); } }, 'Co-bid'));
-        if (l.buildCost !== null) buttons.push(h('button', { type: 'button', title: 'Build your own for ' + fmtM(l.buildCost) + '. It opens in two rounds at 70% strength.', disabled: !ok || !!build, onclick: () => ctx.write({ market: { bids: plan.bids, builds: [...plan.builds, { lot: l.key }] } }) }, 'Build ' + fmtM(l.buildCost)));
+        if (l.buildCost !== null) buttons.push(h('button', { type: 'button', title: 'Build your own for ' + fmtM(l.buildCost) + '. It opens in ' + (view.buildDelay === 1 ? 'one round' : view.buildDelay + ' rounds') + ' at ' + view.buildPct + '% strength.', disabled: !ok || !!build, onclick: () => ctx.write({ market: { bids: plan.bids, builds: [...plan.builds, { lot: l.key }] } }) }, 'Build ' + fmtM(l.buildCost)));
       }
-      if (!l.deep) buttons.push(h('button', { type: 'button', title: 'Spend 1 attention to narrow the estimate range for this company. The answer is final.', disabled: !ok || plan.actions.some(a => a.lot === l.key) || attentionUsed(plan, view.liveAuction) >= view.attMax, onclick: () => ctx.write({ actions: [...plan.actions, { type: 'deepdive', lot: l.key }] }) }, 'Deep dive'));
+      if (!l.deep) buttons.push(h('button', { type: 'button', title: 'Spend 1 attention to narrow the estimate range for this company. The answer is final.', disabled: !ok || plan.actions.some(a => a.lot === l.key) || attentionUsed(plan, view.liveAuction, view.freeDeep) >= view.attMax, onclick: () => ctx.write({ actions: [...plan.actions, { type: 'deepdive', lot: l.key }] }) }, 'Deep dive'));
       buttons.push(h('button.ghost', { type: 'button', onclick: () => { (ui.skipped = ui.skipped || {})[l.key] = true; ctx.rerender(); } }, 'Skip'));
     }
     const placed = [];

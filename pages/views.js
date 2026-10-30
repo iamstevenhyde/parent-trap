@@ -3,9 +3,9 @@
 // Nothing here changes the engine state.
 
 import { score, leaderboard } from '../engine/engine.js';
-import { evOf, CAPABILITIES, CAP_LABEL, attLimit } from '../engine/core.js';
+import { evOf, CAPABILITIES, CAP_LABEL, attLimit, skillCount } from '../engine/core.js';
 import {
-  CO, valueOf, saOf, heldUnits, lineAvail, budgetOf, feeRate, integrateCost, turnCost, buildCostOf, hedgePct,
+  CO, valueOf, saOf, heldUnits, lineAvail, budgetOf, feeRate, integrateCost, turnCost, buildCostOf, hedgePct, hedgeCost, buildTerms, saleShare,
 } from '../engine/model.js';
 import { chainById } from '../engine/engine.js';
 import { obligations } from '../engine/model.js';
@@ -50,7 +50,7 @@ export function buildTeamView(state, tid, wins = []) {
     if (round < c.start + 1 || round > c.start + 2) continue;
     const ch = chainById[c.id];
     const entry = { chain: c.id, title: ch.name, label: ch.stage2.actions[0].label, units: [] };
-    for (const u of units) { const cost = Math.max(1, hedgePct(c.id) * saOf(state, state.units[u.id])); costs.hedge[c.id + '|' + u.id] = cost; entry.units.push({ unit: u.id, cost }); }
+    for (const u of units) { const cost = hedgeCost(state, tid, c.id, saOf(state, state.units[u.id])); costs.hedge[c.id + '|' + u.id] = cost; entry.units.push({ unit: u.id, cost }); }
     hedges.push(entry);
   }
   const lots = state.lots.map(l => {
@@ -66,7 +66,7 @@ export function buildTeamView(state, tid, wins = []) {
   });
   const divest = full.map(u => {
     const sa = saOf(state, state.units[u.id]);
-    return { unit: u.id, sa, market: cfg.SALE_MARKET * sa, list: round >= 2 && round <= cfg.LIST_LAST_ROUND ? cfg.LIST_FRACTIONS.map(f => ({ f, price: f * sa })) : [] };
+    return { unit: u.id, sa, market: saleShare(state, tid) * sa, marketPct: Math.round(saleShare(state, tid) * 100), list: round >= 2 && round <= cfg.LIST_LAST_ROUND ? cfg.LIST_FRACTIONS.map(f => ({ f, price: f * sa })) : [] };
   });
   const prev = state.snapshots[Math.max(0, round - 1)];
   return {
@@ -75,7 +75,9 @@ export function buildTeamView(state, tid, wins = []) {
     hostGrant: t.grants || 0, cash: t.cash, drawn: t.drawn, line: lineAvail(state, t), budget: budgetOf(state, tid), feeRate: feeRate(state, tid), recLoan: t.recLoan,
     receivership: !!t.receivership, attMax: attLimit(state, t), ev: evOf(state, tid), prevRank: prev && prev.teams[tid] ? prev.teams[tid].rank : null,
     ofTeams: state.teamIds.length + state.botIds.length,
-    capabilities: { ...t.capabilities }, uses: { ...t.uses }, capLabels: CAP_LABEL, capList: CAPABILITIES,
+    capabilities: { ...t.capabilities }, pendingSkills: [...t.pendingSkills], skillCount: skillCount(t), maxSkills: cfg.MAX_SKILLS, devcapOpen: round <= cfg.DEVCAP_LAST_ROUND, freeDeep: t.capabilities.analyst ? cfg.ANALYST_FREE_DEEP : 0,
+    buildDelay: buildTerms(state, tid).delay, buildPct: Math.round(buildTerms(state, tid).strength * 100), autoArrive: 1 + cfg.BUILD_DELAY, autoPct: Math.round(cfg.BUILD_STRENGTH * 100), allyDividend: cfg.COBID_CASH * (t.capabilities.ally ? cfg.ALLY_DIV_MULT : 1),
+    capLabels: CAP_LABEL, capList: CAPABILITIES,
     units, pairs, lots, costs, hedges, divest, builds: t.cip.map(c => ({ name: CO[c.co] ? CO[c.co].name : c.co, cost: c.cost })),
     teams: state.teamIds.map(id => ({ id, name: teamName(state, id) })),
   };

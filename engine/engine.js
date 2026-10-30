@@ -11,13 +11,12 @@ import { buildSchedule, chainById } from './schedule.js';
 import {
   CO, buildWorld, trueTheta, makeUnit, valueOf, saOf, estimate, heldUnits, reservedFor, budgetOf,
 } from './model.js';
-import { CAPABILITIES, emit, emptyLedger, openSpell, evOf, normalizeDecision, applyDeepDives, post, money, attLimit } from './core.js';
+import { CAPABILITIES, emptyCaps, skillCount, skillNote, attentionOf, emit, emptyLedger, openSpell, evOf, normalizeDecision, applyDeepDives, post, money, attLimit } from './core.js';
 
 function newTeam(id, isBot, name, cfg, seat) {
   return {
     id, isBot, name, seat, cash: isBot ? cfg.BOT_CASH : cfg.CASH0, drawn: 0, recLoan: 0, receivership: null,
-    capabilities: { acquirer: false, integrator: false, operator: false, analyst: false },
-    uses: { acquirer: 0, integrator: 0, operator: 0, analyst: 0 }, devSpend: { acquirer: 0, integrator: 0, operator: 0, analyst: 0 },
+    capabilities: emptyCaps(false), devSpend: emptyCaps(0), pendingSkills: [], freeNoted: {},
     deep: {}, known: {}, projects: [], cip: [], ledger: emptyLedger(), spells: [], hist: {}, ev1: 0, signals: {}, saved: {}, anergySeen: {},
   };
 }
@@ -91,6 +90,17 @@ export function createGame(seed, teamCount = 8, opts = {}) {
 }
 
 // ---------- opening a round ----------
+// Rounds 3 and 4 list fewer companies when the tables hold little cash (rules change 2026-10-29; on 10/29 6 of 8 round-3 lots and 7 of 13 round-4 lots drew no bid).
+// Cash that can buy a lot: every table's cash plus its unused credit line, the AI seats and bots included. The count is that cash times LOT_CASH_FRAC
+// divided by the average listed value of the candidates, never above the base count and never below LOT_MIN. It reads only state, so a replay gets the same number.
+export function lotCount(state, base, candidates) {
+  const cfg = state.cfg, ids = candidates.slice(0, base);
+  if (!ids.length) return 0;
+  let cash = 0;
+  for (const id of [...state.teamIds, ...state.botIds]) cash += Math.max(0, budgetOf(state, id));
+  const avg = ids.reduce((s, id) => s + CO[state.units[id].co].value_musd, 0) / ids.length;
+  return Math.max(Math.min(cfg.LOT_MIN, base), Math.min(base, Math.round(cash * cfg.LOT_CASH_FRAC / avg)));
+}
 function lotFor(state, unitId, kind = 'auction', extra = {}) {
   const u = state.units[unitId];
   return { key: 'L:' + unitId + (kind === 'team' ? ':team' : ''), unitId, kind, catalog: CO[u.co].value_musd, scarce: u.scarce, ...extra };
@@ -102,13 +112,12 @@ export function openRound(state, round) {
   state.lockCounter = 0;
   const ids = [];
   if (round === 1) ids.push(...cfg.ROUND1_LOTS.filter(id => !state.units[id].owners.length));
-  else if (round === 2 || round === 3) {
-    const n = round === 2 ? cfg.LOTS_R2 : cfg.LOTS_R3;
-    ids.push(...state.poolQueue.splice(0, n));
-  } else if (round === 4) {
+  else if (round === 2) ids.push(...state.poolQueue.splice(0, cfg.LOTS_R2));
+  else if (round === 3) ids.push(...state.poolQueue.splice(0, lotCount(state, cfg.LOTS_R3, state.poolQueue)));
+  else if (round === 4) {
     // round 4 lists whatever nobody owns (unsold lots, units sold to the market). Round 5 lists no auction lots: only team listings (below).
-    const left = state.unitIds.filter(id => !state.units[id].owners.length && !state.units[id].built);
-    ids.push(...keyedShuffle(left, state.seed, 'r4_lots').slice(0, cfg.LOTS_R4_MAX));
+    const left = keyedShuffle(state.unitIds.filter(id => !state.units[id].owners.length && !state.units[id].built), state.seed, 'r4_lots');
+    ids.push(...left.slice(0, lotCount(state, cfg.LOTS_R4_MAX, left)));
   }
   state.lots = ids.map(id => lotFor(state, id));
   // team-to-team listings that become visible this round
@@ -141,6 +150,7 @@ export function openRound(state, round) {
     const lines = NOISE_TICKER.tags[tag];
     emit(state, { type: 'ticker', stage: 0, tag, text: lines[Math.floor(hash01(state.seed, 'noise_line', round, i) * lines.length)].text, noise: true });
   }
+  for (const tid of state.teamIds) if (state.teams[tid].capabilities.acquirer && state.lots.length) skillNote(state, tid, 'acquirer', 'your estimate on every company for sale is twice as tight this round.');
   emit(state, { type: 'round_open', text: 'Round ' + round + ' is open with ' + state.lots.length + ' listed companies.', lots: state.lots.map(l => l.key) });
   state.decisions[round] = state.decisions[round] || {};
   return state;
@@ -156,7 +166,7 @@ export function validateDecisions(state, teamId, dec) {
   if (state.phase !== 'open') errors.push('This round is not open.');
   const d = normalizeDecision(dec);
   // liveAuction (default off): bids are won in the live market and limited by cash, so they do not use attention
-  const attention = (state.opts.liveAuction ? 0 : d.bids.length) + d.builds.length + d.actions.length;
+  const attention = attentionOf(state, t, d);
   if (!t.isBot && attention > attLimit(state, t)) errors.push('You can take at most ' + attLimit(state, t) + ' corporate actions. You picked ' + attention + '.');
   for (const b of d.bids) {
     const lot = state.lotsByKey[b.lot];
@@ -187,7 +197,11 @@ export function validateDecisions(state, teamId, dec) {
       if (!solo(a.unit)) errors.push('Turnaround needs a unit you fully own.');
       else if (round - state.units[a.unit].lastTurn < 2) errors.push('One Turnaround per unit every two rounds.');
     } else if (a.type === 'devcap') {
+      const picked = d.actions.filter(x => x.type === 'devcap').length;
       if (!CAPABILITIES.includes(a.cap)) errors.push('Pick a capability to develop.');
+      else if (round > cfg.DEVCAP_LAST_ROUND) errors.push('Develop capability is closed in round ' + (cfg.DEVCAP_LAST_ROUND + 1) + '. It could not pay off in time.');
+      else if (t.capabilities[a.cap]) errors.push('You already have that skill.');
+      else if (skillCount(t) + picked > cfg.MAX_SKILLS) errors.push('A team can hold at most ' + cfg.MAX_SKILLS + ' skills.');
     } else if (a.type === 'deepdive') {
       if (a.lot) { if (!state.lotsByKey[a.lot]) errors.push('Deep dive needs a listed company.'); }
       else if (a.pair) { if (!held[a.pair[0]] || !held[a.pair[1]]) errors.push('Deep dive on a pair needs two units you hold.'); }

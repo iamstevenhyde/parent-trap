@@ -132,11 +132,11 @@ function liveCard(ctx, l, sl) {
   if (!own && vl.buildCost !== null && vl.buildCost !== undefined && !l.fixed) {
     const build = ctx.plan.builds.find(b => b.lot === l.key);
     const poorBuild = !build && vl.buildCost > ctx.meter.free + 1e-9;
-    buttons.push(h('button', { type: 'button', title: poorBuild ? 'Not enough free cash for this build.' : 'Build your own for ' + fmtM(vl.buildCost) + ' instead of bidding. It opens in two rounds at 70% strength.', disabled: !ok || !!build || poorBuild || attentionUsed(ctx.plan, true) >= view.attMax, onclick: () => { const m = ctx.row.market || {}; ctx.write({ market: { bids: m.bids || [], builds: [...(m.builds || []), { lot: l.key }], live: m.live || {}, closed: false } }); } }, build ? 'Build ordered ' + fmtM(vl.buildCost) : 'Build ' + fmtM(vl.buildCost)));
+    buttons.push(h('button', { type: 'button', title: poorBuild ? 'Not enough free cash for this build.' : 'Build your own for ' + fmtM(vl.buildCost) + ' instead of bidding. It opens in ' + (view.buildDelay === 1 ? 'one round' : view.buildDelay + ' rounds') + ' at ' + view.buildPct + '% strength.', disabled: !ok || !!build || poorBuild || attentionUsed(ctx.plan, true, view.freeDeep) >= view.attMax, onclick: () => { const m = ctx.row.market || {}; ctx.write({ market: { bids: m.bids || [], builds: [...(m.builds || []), { lot: l.key }], live: m.live || {}, closed: false } }); } }, build ? 'Build ordered ' + fmtM(vl.buildCost) : 'Build ' + fmtM(vl.buildCost)));
     if (build && ok) buttons.push(h('button.x', { type: 'button', title: 'Cancel the build order', onclick: () => { const m = ctx.row.market || {}; ctx.write({ market: { bids: m.bids || [], builds: (m.builds || []).filter(b => b.lot !== l.key), live: m.live || {}, closed: false } }); } }, 'x'));
     if (poorBuild && ok) buttons.push(h('p.ack.bad.cashwarn', 'Not enough free cash to build this: it costs ' + fmtM(vl.buildCost) + ' and you have ' + fmtM(Math.max(0, Math.floor(ctx.meter.free))) + ' free.'));
   }
-  if (!own && vl && !vl.deep) buttons.push(h('button', { type: 'button', title: 'Spend 1 attention to narrow the estimate range for this company. The answer is final.', disabled: !ok || ctx.plan.actions.some(a => a.lot === l.key) || attentionUsed(ctx.plan, true) >= view.attMax, onclick: () => ctx.write({ actions: [...ctx.plan.actions, { type: 'deepdive', lot: l.key }] }) }, gl('deepdive', 'Deep dive')));
+  if (!own && vl && !vl.deep) buttons.push(h('button', { type: 'button', title: 'Spend 1 attention to narrow the estimate range for this company. The answer is final.', disabled: !ok || ctx.plan.actions.some(a => a.lot === l.key) || attentionUsed(ctx.plan, true, view.freeDeep) >= view.attMax, onclick: () => ctx.write({ actions: [...ctx.plan.actions, { type: 'deepdive', lot: l.key }] }) }, gl('deepdive', 'Deep dive')));
   const priceBox = l.fixed
     ? h('div.pricebox', [h('b.price', fmtM(l.opening)), h('span.sub', ' fixed price, listed by ' + l.sellerName + '. ' + (l.high ? l.high.name + ' took it.' : 'First team to take it gets it.'))])
     : h('div.pricebox', [l.price === null ? [h('b.price.none', 'No bids'), h('span.sub', ' opening price ' + fmtM(l.opening))] : [h('b.price', fmtM(l.price)), h('span.sub', ' led by '), h('b.leader' + (lead ? '.me' : ''), lead ? 'YOU' : l.high.name), l.high.bot ? h('em.ai', 'AI') : null]]);
@@ -162,7 +162,7 @@ export function renderLiveMarket(ctx) {
   if (game.phase === 'market') {
     const led = ctx.led || [];
     zone.append(h('p.banner.leadsum', led.length ? 'You lead on ' + led.map(l => l.name + ' ' + fmtM(l.price) + (l.high.ally ? ' (half)' : '')).join(', ') + '. Free cash now ' + fmtM(ctx.meter.free) + '.' : 'You lead on nothing yet. Free cash ' + fmtM(ctx.meter.free) + '.'));
-    if (ctx.opening) zone.append(h('p.sub', 'You own 2 businesses and need a 3rd. Win a company here and it joins your portfolio at the price you pay. You may win more than one, but each extra business adds running cost. Win nothing and you can still bid in round 1. If you have no new company by the end of round 1, the game orders a build for you. It arrives in round 3 at 70% strength. Anything nobody wins is for sale again in round 1.'));
+    if (ctx.opening) zone.append(h('p.sub', 'You own 2 businesses and need a 3rd. Win a company here and it joins your portfolio at the price you pay. You may win more than one, but each extra business adds running cost. Win nothing and you can still bid in round 1. There are three ways to a third business: Build, Buy and Ally. If you have no new company by the end of round 1, the game orders a weaker copy of a company for you. It arrives in round ' + view.autoArrive + ' at ' + view.autoPct + '% strength. Anything nobody wins is for sale again in round 1.'));
     else if (game.round === 1 && ctx.openingResult) zone.append(h('p.banner.openingres', ctx.openingResult.length ? 'Opening auction: you won ' + ctx.openingResult.map(r => r.name + ' for ' + fmtM(r.price) + (r.together ? ' together with another team (you paid half)' : '')).join(' and ') + '. It is already one of your businesses. What nobody won is on the side below.' : 'Opening auction: you won nothing. You can still bid on what is left below, or order a build. If you still have no new company at the end of round 1, the game orders one for you, and it arrives in round 3 at 70% strength.'));
     else if (game.round === 1) zone.append(h('p.sub', 'Round 1: if you have no new company by the end of the round, the game orders a build for you. It arrives in round 3 at 70% strength.'));
     if (view.drawn > 0.5) zone.append(h('p.warnline', 'You already owe ' + fmtM(view.drawn) + ' on your credit line. If cash runs out at the end of the round, the game sells your weakest business, even one you just won.'));
@@ -179,4 +179,36 @@ export function renderLiveMarket(ctx) {
   }
   for (const l of market.lots) zone.append(liveCard(ctx, l));
   return zone;
+}
+
+// A visible alert at the top of the page for each invitation to bid together (Accept joins, Decline hides it). Live market: proposals in the market snapshot.
+// Sealed rounds: the invitations team.js finds in the other teams' saved bids (ctx.invites).
+export function renderAllyAlerts(ctx) {
+  const { view, ui } = ctx, tid = view.teamId, out = [];
+  const ok = ctx.editable('market');
+  const declined = ui.declined = ui.declined || {};
+  if (ctx.live && ctx.hasMarket && ctx.market && ctx.game.phase === 'market') {
+    for (const p of (ctx.market.proposals || []).filter(x => x.to === tid)) {
+      const l = ctx.market.lots.find(x => x.key === p.lot);
+      if (!l || declined[p.from + p.lot] || leadsLot(l, tid)) continue;
+      const stale = l.fixed ? !!l.high : p.amount < l.next - 1e-9, lim = coLimit(ctx, l, p.from), over = lim !== null && p.amount > lim + 1e-9;
+      out.push(h('div.alert.red.allyalert', { dataset: { lot: p.lot } }, [
+        h('b', p.fromName + ' wants to bid with you on ' + l.name + ' at ' + fmtM(p.amount) + '.'),
+        ' You would each pay ' + fmtM(p.amount / 2) + ' plus the deal fee and own half.' + (stale ? ' The price has moved past this offer, so ask for a new one.' : '') + (over && !stale ? ' Your half is more than you can safely afford.' : ''),
+        h('button.go', { type: 'button', disabled: !ok || stale || over, onclick: () => ctx.coJoin(p.lot, p.from) }, 'Accept'),
+        h('button.ghost', { type: 'button', onclick: () => { declined[p.from + p.lot] = true; ctx.rerender(); } }, 'Decline'),
+      ]));
+    }
+  } else {
+    for (const inv of ctx.invites || []) {
+      const lot = view.lots.find(l => l.key === inv.lot);
+      if (!lot) continue;
+      out.push(h('div.alert.red.allyalert', { dataset: { lot: inv.lot } }, [
+        h('b', inv.fromName + ' wants to bid with you on ' + lot.name + '.'), ' You would each pay half and own half.',
+        h('button.go', { type: 'button', disabled: !ok, onclick: () => { const a = Number(ui['inv' + inv.lot] || lot.signal.mid); ctx.write({ market: { bids: [...ctx.plan.bids.filter(b => b.lot !== inv.lot), { lot: inv.lot, amount: a, ally: inv.from }], builds: ctx.plan.builds } }); ctx.rerender(); } }, 'Accept at ' + fmtM(Number(ui['inv' + inv.lot] || lot.signal.mid))),
+        h('button.ghost', { type: 'button', onclick: () => { declined[inv.from + inv.lot] = true; ctx.rerender(); } }, 'Decline'),
+      ]));
+    }
+  }
+  return out;
 }

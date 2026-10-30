@@ -10,13 +10,13 @@ const ORDER = [
   ['shock', ['shock_resolved', 'shock_dud', 'shock_team_impact', 'hedge_bought']],
   ['synergy', ['synergy_fired', 'synergy_not_earned', 'anergy_fired', 'turnaround_worked', 'turnaround_failed', 'deep_dive']],
   ['complexity', ['complexity_charged']],
-  ['capability', ['capability_earned', 'capability_progress']],
+  ['capability', ['capability_progress', 'capability_earned', 'skill_effect']],
   ['trouble', ['forced_sale', 'receivership']],
   ['host', ['host_grant']],
 ];
-const GLOSS = { winners_curse: 'winners_curse', synergy_fired: 'synergy', anergy_fired: 'anergy', synergy_not_earned: 'integrate', complexity_charged: 'complexity', capability_earned: 'capability', capability_progress: 'capability', receivership: 'receivership', turnaround_worked: 'turnaround', turnaround_failed: 'turnaround', deep_dive: 'deepdive' };
+const GLOSS = { winners_curse: 'winners_curse', synergy_fired: 'synergy', anergy_fired: 'anergy', synergy_not_earned: 'integrate', complexity_charged: 'complexity', capability_earned: 'capability', capability_progress: 'capability', skill_effect: 'capability', receivership: 'receivership', turnaround_worked: 'turnaround', turnaround_failed: 'turnaround', deep_dive: 'deepdive' };
 const BAD = new Set(['winners_curse', 'auction_lost', 'anergy_fired', 'complexity_charged', 'forced_sale', 'receivership', 'turnaround_failed', 'synergy_not_earned']);
-const GOOD = new Set(['alliance_dividend', 'host_grant', 'auction_won', 'good_buy', 'synergy_fired', 'capability_earned', 'turnaround_worked']);
+const GOOD = new Set(['alliance_dividend', 'host_grant', 'auction_won', 'good_buy', 'synergy_fired', 'capability_earned', 'skill_effect', 'turnaround_worked']);
 
 function headBody(e) {
   const text = e.text || '';
@@ -33,6 +33,7 @@ function numberFor(e) {
     case 'shock_team_impact': return e.amount !== undefined ? fmtSigned(e.amount) : '';
     case 'alliance_dividend': return e.amount !== undefined ? '+' + fmtM(e.amount) : '';
     case 'host_grant': return e.amount !== undefined ? '+' + fmtM(e.amount) : '';
+    case 'skill_effect': return e.amount ? '+' + fmtM(e.amount) : '';
     case 'divest_market': return e.proceeds !== undefined ? fmtM(e.proceeds) : '';
     default: return '';
   }
@@ -73,8 +74,8 @@ export function resolvingOverlay() {
 
 export function capabilitiesPanel(view) {
   const benefits = CAP_TEXT;
-  return h('div.sheet', [h('h2', gl('capability', 'Capabilities')), h('p.sub', 'A skill your company earns by doing the same kind of move well twice.'),
-    ...view.capList.map(c => h('div.capline' + (view.capabilities[c] ? '.on' : ''), [h('b', view.capLabels[c] + ' I'), ' ' + (view.capabilities[c] ? 'Earned. ' : view.uses[c] + ' of 2 uses. ') + 'When earned: ' + benefits[c]]))]);
+  return h('div.sheet', [h('h2', gl('capability', 'Capabilities')), h('p.sub', 'One Develop capability earns a skill. Your team can hold ' + view.maxSkills + ' (you hold ' + view.skillCount + (view.pendingSkills.length ? ', ' + view.pendingSkills.length + ' more starts next round' : '') + ').'),
+    ...view.capList.map(c => h('div.capline' + (view.capabilities[c] ? '.on' : ''), [h('b', view.capLabels[c]), ' ' + (view.capabilities[c] ? 'Yours. ' : view.pendingSkills.includes(c) ? 'Starts next round. ' : '') + benefits[c]]))]);
 }
 
 export function historyPanel(results, finalRow) {

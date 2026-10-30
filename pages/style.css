@@ -405,3 +405,6 @@ img.lastcall-art { display: block; width: 100%; max-height: 110px; object-fit: c
 
 /* 10/29: Deep dive answers in one place */
 .ddbox { border: 1px solid var(--amber); border-radius: 8px; padding: 8px 10px; margin: 6px 0 10px; font-size: 15px; } .ddbox p { margin: 4px 0 0; }
+.alert.red { background: #3a1212; border: 2px solid #e5484d; color: #ffd9d9; padding: 10px 12px; border-radius: 6px; margin: 8px 0; font-weight: 600; }
+.alert.red.allyalert { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-weight: 400; }
+.alert.red.openingalert { animation: ptpulse 1s ease-in-out infinite alternate; } @keyframes ptpulse { from { background: #3a1212; } to { background: #5a1515; } }
