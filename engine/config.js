@@ -92,7 +92,7 @@ export const CONFIG = {
   SCARCE: ['S2', 'S3', 'E1'],
   LOTS_R2: 3, LOTS_R3: 3, LOTS_R4_MAX: 5,   // round 5 has no auction lots (Steven, 2026-10-12 evening): it only shows what other teams listed in round 4
   // Later-round lot counts (rules change 2026-10-29): the base counts above are the most a round lists. Rounds 3 and 4 list fewer when the tables hold little cash. See engine.js lotCount.
-  LOT_CASH_FRAC: 0.12, LOT_MIN: 2,   // CALIBRATED-1029: lots = total cash x this share / average listed value of the candidate lots, between LOT_MIN and the base count
+  LOT_CASH_FRAC: 0.35, LOT_MIN: 2,   // CALIBRATED-1029 (10/29 data: humans held $1,883M cash plus credit at R3 open and $3,741M at R4 open, 2 of 8 and 6 of 13 lots drew bids; AI seats assumed to hold about the same, so 0.35 gives 4 lots in R3 and 7 in R4): lots = total cash x this share / average listed value of the candidate lots, between LOT_MIN and the base count
   LIST_LAST_ROUND: 4,   // listings for other teams open rounds 2 to 4 (a listing shows one round later, so the last one is bought in round 5)
   // AI price floor (2026-10-12 evening): an AI seat steps in on an auction lot whose price sits well below that seat's own estimate
   AI_FLOOR: true, FLOOR_TRIGGER: 0.97, FLOOR_MAX_SHARE: 1.00, FLOOR_BID_SHARE: 0.95, FLOOR_KEEP: 100, FLOOR_FROM_TICK: 6, FLOOR_MAX_LEADS: 4, BOT_MAX_WINS_LIVE: 4, FLOOR_BOT_CASH: 400,   // live games with the floor: AI seats start with the same cash as students (was 800 until 10/29)
