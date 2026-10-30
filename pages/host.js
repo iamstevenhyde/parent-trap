@@ -15,7 +15,7 @@ import { chainById } from '../engine/engine.js';
 import { hash01 } from '../engine/rng.js';
 import { MARKET_SECONDS, SNIPE_MS, openMarket, restoreMarket, placeBid, proposeCoBid, joinCoBid, botTick as marketBotTick, closeMarket, marketSnapshot } from './market.js';
 
-export const RESULT_STEP_SECONDS = 12;   // auto-advance only: how long each results reveal stays up
+export const RESULT_STEP_SECONDS = 17;   // auto-advance only: how long each results reveal stays up
 export const DECIDE_SECONDS = { 1: 360, 2: 360, 3: 360, 4: 330, 5: 300 };   // round 4 market is 30 s longer, so its whole clock matches rounds 2-3 (8:30)
 export const OPENING_SECONDS = 240;   // the starting auction: only the auction is open, then round 1 opens with the lots nobody won on the side
 export const OPENING_MIN_MS = 5000;   // the opening auction cannot be closed in its first five seconds
